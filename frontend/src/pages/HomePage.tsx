@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import HowItWorks from '../components/HowItWorks'
 import { fetchWorkingFolder } from '../api'
@@ -24,11 +25,11 @@ export default function HomePage() {
 
   const canGenerate = folder.trim().length > 0
 
+  const navigate = useNavigate()
+
   function handleGenerate() {
     if (!canGenerate) return
-    console.log('[unikorn] generate', folder.trim())
-    setToast('Scanning folder — PRD generation starting…')
-    setTimeout(() => setToast(null), 2500)
+    navigate('/design')
   }
 
   function handleRecentClick(folder: string) {
