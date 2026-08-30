@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchAiStatus, saveAiConfig, testAiConnection, fetchKaneStatus, fetchLogs, clearLogs, type AiStatus, type KaneStatus } from '../api'
 
-type Tab = 'ai' | 'kane' | 'logs'
+type Tab = 'ai' | 'kane' | 'cli' | 'logs'
 
 interface Props {
   onClose: () => void
@@ -30,7 +30,7 @@ export default function SettingsModal({ onClose }: Props) {
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
           <div className="w-40 shrink-0 border-r border-[#E5DEFA] p-3 space-y-1">
-            {([['ai', 'AI'], ['kane', 'Kane CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
+            {([['ai', 'AI'], ['kane', 'Kane CLI'], ['cli', 'CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
@@ -49,6 +49,7 @@ export default function SettingsModal({ onClose }: Props) {
           <div className="flex-1 p-6 overflow-y-auto">
             {activeTab === 'ai' && <AiTab />}
             {activeTab === 'kane' && <KaneTab />}
+            {activeTab === 'cli' && <CliTab />}
             {activeTab === 'logs' && <LogsTab />}
           </div>
         </div>
@@ -275,6 +276,44 @@ function LogsTab() {
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+function CliTab() {
+  const [baseUrl, setBaseUrl] = useState('http://localhost:3001')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    const stored = localStorage.getItem('unikorn-cli-host')
+    if (stored) setBaseUrl(stored)
+  }, [])
+
+  const handleSave = () => {
+    localStorage.setItem('unikorn-cli-host', baseUrl)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-[#6E6480]">Configure the CLI backend host. Default is localhost:3001.</p>
+      <div>
+        <label className="block text-sm font-medium text-[#251F33] mb-1.5">CLI Host URL</label>
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="http://localhost:3001"
+          className="w-full px-3 py-2 rounded-xl border border-[#E5DEFA] text-sm focus:outline-none focus:border-[#7C5CFC] focus:shadow-[0_0_0_3px_rgba(124,92,252,0.1)] transition-shadow"
+        />
+      </div>
+      <button
+        onClick={handleSave}
+        className="px-4 py-2 rounded-xl bg-gradient-to-br from-[#7C5CFC] to-[#9B7CFF] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+      >
+        {saved ? 'Saved ✓' : 'Save'}
+      </button>
     </div>
   )
 }
