@@ -30,7 +30,7 @@ export default function SettingsModal({ onClose }: Props) {
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
           <div className="w-40 shrink-0 border-r border-[#E5DEFA] p-3 space-y-1">
-            {([['cli', 'CLI'], ['ai', 'AI'], ['kane', 'Kane CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
+            {([['cli', 'Terminal CLI'], ['ai', 'AI Provider'], ['kane', 'Kane CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
