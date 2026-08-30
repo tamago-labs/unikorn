@@ -26,15 +26,6 @@ export default function HomePage() {
     setTimeout(() => setToast(null), 2500)
   }
 
-  async function handleBrowse() {
-    try {
-      const handle = await (window as any).showDirectoryPicker()
-      setFolder(handle.name)
-    } catch {
-      // user cancelled
-    }
-  }
-
   function handleRecentClick(folder: string) {
     setFolder(folder)
   }
@@ -59,16 +50,6 @@ export default function HomePage() {
 
           <div className="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow focus-within:border-[#7C5CFC] focus-within:shadow-[0_0_0_4px_rgba(124,92,252,0.14)]">
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleBrowse}
-                className="shrink-0 h-10 px-3 rounded-2xl flex items-center justify-center text-[#7C5CFC] bg-[#F1ECFE] hover:bg-[#E5DEFA] transition-colors text-sm font-semibold gap-1.5"
-                type="button"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-                </svg>
-                Browse
-              </button>
               <input
                 data-testid="unikorn-input"
                 type="text"
