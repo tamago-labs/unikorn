@@ -39,12 +39,10 @@ export default function DesignApp() {
   useEffect(() => {
     const folderParam = searchParams.get('folder')
     if (folderParam) {
-      const name = folderParam.split(/[/\\]/).pop() || folderParam
-      setProjectName(name)
+      setProjectName(folderParam)
     } else {
       fetchWorkingFolder().then((r) => {
-        const name = r.folder.split(/[/\\]/).pop() || r.folder
-        setProjectName(name)
+        setProjectName(r.folder)
       }).catch(() => {})
     }
   }, [searchParams])

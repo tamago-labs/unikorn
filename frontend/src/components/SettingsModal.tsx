@@ -188,19 +188,7 @@ function KaneTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-sm font-bold text-[#251F33]">Kane CLI</h3>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="p-1.5 rounded-lg text-[#6E6480] hover:bg-[#F1ECFE] hover:text-[#251F33] transition-colors disabled:opacity-50"
-          title="Refresh"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" />
-          </svg>
-        </button>
-      </div>
+      <h3 className="text-sm font-bold text-[#251F33] mb-2">Kane CLI</h3>
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-[#6E6480] py-4">
