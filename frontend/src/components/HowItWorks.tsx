@@ -6,7 +6,7 @@ type Variant = 'A' | 'B' | 'C'
 const steps = [
   {
     n: '01',
-    title: 'Drop in your code',
+    title: 'Draft PRD',
     desc: 'Unikorn scans your code and generates a PRD grounded in what it actually does.',
     icon: '📁',
   },
