@@ -13,7 +13,7 @@ const steps = [
   {
     n: '02',
     title: 'Verify claims',
-    desc: 'Kane CLI checks each code-traceable claim against your codebase — proved or flagged, never assumed.',
+    desc: 'Kane CLI auto-verifies every claim and captures screenshots as proof.',
     icon: '✅',
   },
   {
