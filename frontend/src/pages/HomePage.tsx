@@ -55,7 +55,7 @@ export default function HomePage() {
           >
             AI built the product.
             <br />
-            We&apos;ll ship the story.
+            We build everything else.
           </h1>
           <p className="text-center text-[#6E6480] mt-2.5 text-[15px]">
             Paste a folder. Get a PRD, one-pager, and tutorial, built from your real working code.
