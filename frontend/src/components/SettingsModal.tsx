@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function SettingsModal({ onClose }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('ai')
+  const [activeTab, setActiveTab] = useState<Tab>('cli')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -30,7 +30,7 @@ export default function SettingsModal({ onClose }: Props) {
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
           <div className="w-40 shrink-0 border-r border-[#E5DEFA] p-3 space-y-1">
-            {([['ai', 'AI'], ['kane', 'Kane CLI'], ['cli', 'CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
+            {([['cli', 'CLI'], ['ai', 'AI'], ['kane', 'Kane CLI'], ['logs', 'Logs']] as [Tab, string][]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
@@ -108,6 +108,7 @@ function AiTab() {
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-[#6E6480]">Connect any OpenAI-compatible API. Works with OpenAI, LongCat, DeepSeek, and more.</p>
       <div>
         <label className="block text-sm font-medium text-[#251F33] mb-1.5">Base URL</label>
         <input
