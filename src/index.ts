@@ -96,6 +96,10 @@ function getKaneStatus(): KaneStatus {
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', app: 'unikorn', port: PORT }))
 
+app.get('/api/working-folder', (_req, res) => {
+  res.json({ folder: process.cwd() })
+})
+
 // AI status
 function maskKey(key: string): string {
   if (!key) return ''

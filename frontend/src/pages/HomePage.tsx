@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Navbar from '../components/Navbar'
 import HowItWorks from '../components/HowItWorks'
+import { fetchWorkingFolder } from '../api'
 
 interface RecentProject {
   folder: string
@@ -16,6 +17,10 @@ const recentProjects: RecentProject[] = [
 export default function HomePage() {
   const [folder, setFolder] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchWorkingFolder().then((r) => setFolder(r.folder)).catch(() => {})
+  }, [])
 
   const canGenerate = folder.trim().length > 0
 

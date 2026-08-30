@@ -16,6 +16,7 @@ async function fetchWithRetry(input: string, init?: RequestInit, retries = 3): P
 export interface AiStatus {
   configured: boolean
   baseUrl: string
+  apiKey: string
   model: string
   hasKey: boolean
 }
@@ -54,6 +55,12 @@ export async function testAiConnection(): Promise<{ ok: boolean; reply?: string;
 export async function fetchKaneStatus(): Promise<KaneStatus> {
   const res = await fetch(`${API_BASE}/kane/status`)
   if (!res.ok) throw new Error(`Kane status ${res.status}`)
+  return res.json()
+}
+
+export async function fetchWorkingFolder(): Promise<{ folder: string }> {
+  const res = await fetchWithRetry(`${API_BASE}/working-folder`)
+  if (!res.ok) throw new Error(`Working folder ${res.status}`)
   return res.json()
 }
 
