@@ -53,7 +53,7 @@ export default function HomePage() {
             data-testid="hero-title"
             className="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight"
           >
-            You shipped the product.
+            AI built the product.
             <br />
             We&apos;ll ship the story.
           </h1>
