@@ -47,7 +47,7 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col">
       <Navbar />
 
-      <main className="min-h-[68vh] flex items-center justify-center px-6 py-10">
+      <main className="flex-1 flex flex-col items-center justify-center px-6 py-10 gap-12">
         <div className="w-full max-w-xl">
           <h1
             data-testid="hero-title"
@@ -138,9 +138,9 @@ export default function HomePage() {
             </div>
           )}
         </div>
-      </main>
 
-      <HowItWorks />
+        <HowItWorks />
+      </main>
     </div>
   )
 }
