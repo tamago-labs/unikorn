@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Navbar from '../components/Navbar'
 import HowItWorks from '../components/HowItWorks'
 
@@ -16,7 +16,6 @@ const recentProjects: RecentProject[] = [
 export default function HomePage() {
   const [folder, setFolder] = useState('')
   const [toast, setToast] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const canGenerate = folder.trim().length > 0
 
@@ -27,15 +26,12 @@ export default function HomePage() {
     setTimeout(() => setToast(null), 2500)
   }
 
-  function handleBrowse() {
-    fileRef.current?.click()
-  }
-
-  function handleFolderPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (f) {
-      const path = (f as any).webkitRelativePath || f.name
-      setFolder(path.split('/')[0] || f.name)
+  async function handleBrowse() {
+    try {
+      const handle = await (window as any).showDirectoryPicker()
+      setFolder(handle.name)
+    } catch {
+      // user cancelled
     }
   }
 
@@ -63,13 +59,6 @@ export default function HomePage() {
 
           <div className="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow focus-within:border-[#7C5CFC] focus-within:shadow-[0_0_0_4px_rgba(124,92,252,0.14)]">
             <div className="flex items-center gap-2">
-              <input
-                ref={fileRef}
-                type="file"
-                className="hidden"
-                onChange={handleFolderPick}
-                {...({ webkitdirectory: '' } as any)}
-              />
               <button
                 onClick={handleBrowse}
                 className="shrink-0 h-10 px-3 rounded-2xl flex items-center justify-center text-[#7C5CFC] bg-[#F1ECFE] hover:bg-[#E5DEFA] transition-colors text-sm font-semibold gap-1.5"
