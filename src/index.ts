@@ -97,11 +97,18 @@ function getKaneStatus(): KaneStatus {
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', app: 'unikorn', port: PORT }))
 
 // AI status
+function maskKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 8) return '•'.repeat(key.length)
+  return key.slice(0, 4) + '•'.repeat(key.length - 8) + key.slice(-4)
+}
+
 app.get('/api/ai/status', (_req, res) => {
   const config = loadAiConfig()
   res.json({
     configured: !!(config.baseUrl && config.apiKey),
     baseUrl: config.baseUrl,
+    apiKey: maskKey(config.apiKey),
     model: config.model,
     hasKey: !!config.apiKey,
   })
@@ -112,14 +119,14 @@ app.post('/api/ai/config', (req, res) => {
   const { baseUrl, apiKey, model } = req.body
   const config = loadAiConfig()
   if (baseUrl !== undefined) config.baseUrl = baseUrl
-  if (apiKey !== undefined) config.apiKey = apiKey
+  if (apiKey !== undefined && !apiKey.includes('•')) config.apiKey = apiKey
   if (model !== undefined) config.model = model
   saveAiConfig(config)
   res.json({ ok: true, configured: !!(config.baseUrl && config.apiKey) })
 })
 
-// Test AI connection
-app.post('/api/ai/test', async (req, res) => {
+// Test AI connection (uses saved config only — frontend never sends the key)
+app.post('/api/ai/test', async (_req, res) => {
   const config = loadAiConfig()
   if (!config.baseUrl || !config.apiKey) {
     return res.status(400).json({ error: 'Missing baseUrl or apiKey' })
