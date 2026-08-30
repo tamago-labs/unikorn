@@ -172,27 +172,39 @@ function AiTab() {
 
 function KaneTab() {
   const [kane, setKane] = useState<KaneStatus | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchKaneStatus().then(setKane).catch(() => setKane(null))
-  }, [])
+  const refresh = () => {
+    setLoading(true)
+    fetchKaneStatus().then(setKane).catch(() => setKane(null)).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { refresh() }, [])
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <h3 className="text-sm font-bold text-[#251F33]">Kane CLI</h3>
         <button
-          onClick={() => fetchKaneStatus().then(setKane).catch(() => {})}
-          className="p-1.5 rounded-lg text-[#6E6480] hover:bg-[#F1ECFE] hover:text-[#251F33] transition-colors"
+          onClick={refresh}
+          disabled={loading}
+          className="p-1.5 rounded-lg text-[#6E6480] hover:bg-[#F1ECFE] hover:text-[#251F33] transition-colors disabled:opacity-50"
           title="Refresh"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={loading ? 'animate-spin' : ''}>
             <path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" />
           </svg>
         </button>
       </div>
 
-      {!kane ? (
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-[#6E6480] py-4">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+            <path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" />
+          </svg>
+          Checking Kane CLI…
+        </div>
+      ) : !kane ? (
         <p className="text-sm text-[#6E6480]">Unable to reach Kane CLI.</p>
       ) : (
         <div className="space-y-3">
