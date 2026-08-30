@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import StudioHeader from '../components/StudioHeader'
 import VerifiedCard from '../components/VerifiedCard'
 import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
 import Gallery from '../components/Gallery'
+import { fetchWorkingFolder } from '../api'
 
 const tabs = [
   { id: 'tutorial', label: 'Tutorial', count: 4 },
@@ -31,12 +32,20 @@ const mockArtifacts: Record<string, Array<{ title: string; subtitle: string; bad
 
 export default function DesignApp() {
   const [activeTab, setActiveTab] = useState('tutorial')
+  const [projectName, setProjectName] = useState('')
+
+  useEffect(() => {
+    fetchWorkingFolder().then((r) => {
+      const name = r.folder.split(/[/\\]/).pop() || r.folder
+      setProjectName(name)
+    }).catch(() => {})
+  }, [])
 
   const artifacts = mockArtifacts[activeTab] || []
 
   return (
     <div className="min-h-screen bg-[#FBFAFE]">
-      <StudioHeader projectName="acme-api" />
+      <StudioHeader projectName={projectName} />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <VerifiedCard
