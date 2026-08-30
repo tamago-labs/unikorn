@@ -12,7 +12,7 @@ const steps = [
   },
   {
     n: '02',
-    title: 'Verify claims',
+    title: 'Auto-verify',
     desc: 'Kane CLI auto-verifies every claim and captures screenshots as proof.',
     icon: '✅',
   },
