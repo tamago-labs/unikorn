@@ -29,7 +29,7 @@ export default function HomePage() {
 
   function handleGenerate() {
     if (!canGenerate) return
-    navigate('/design')
+    navigate(`/design?folder=${encodeURIComponent(folder.trim())}`)
   }
 
   function handleRecentClick(folder: string) {

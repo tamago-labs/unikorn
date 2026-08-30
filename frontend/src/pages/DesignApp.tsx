@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import StudioHeader from '../components/StudioHeader'
 import VerifiedCard from '../components/VerifiedCard'
 import StudioTabs from '../components/StudioTabs'
@@ -33,13 +34,20 @@ const mockArtifacts: Record<string, Array<{ title: string; subtitle: string; bad
 export default function DesignApp() {
   const [activeTab, setActiveTab] = useState('tutorial')
   const [projectName, setProjectName] = useState('')
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
-    fetchWorkingFolder().then((r) => {
-      const name = r.folder.split(/[/\\]/).pop() || r.folder
+    const folderParam = searchParams.get('folder')
+    if (folderParam) {
+      const name = folderParam.split(/[/\\]/).pop() || folderParam
       setProjectName(name)
-    }).catch(() => {})
-  }, [])
+    } else {
+      fetchWorkingFolder().then((r) => {
+        const name = r.folder.split(/[/\\]/).pop() || r.folder
+        setProjectName(name)
+      }).catch(() => {})
+    }
+  }, [searchParams])
 
   const artifacts = mockArtifacts[activeTab] || []
 
