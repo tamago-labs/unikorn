@@ -53,9 +53,9 @@ export default function HomePage() {
             data-testid="hero-title"
             className="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight"
           >
-            AI built the product.
+            You shipped the product.
             <br />
-            We build everything else.
+            We&apos;ll ship the story.
           </h1>
           <p className="text-center text-[#6E6480] mt-2.5 text-[15px]">
             Drop in your codebase — get a PRD, one-pager, and tutorial, verified against real code.
