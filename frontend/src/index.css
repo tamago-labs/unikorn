@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { font-family: 'Manrope', sans-serif; }
+body {
+  background: #fbfafe;
+  color: #251f33;
+  background-image: radial-gradient(circle at 50% 0%, #efe9fb 0%, #fbfafe 55%);
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Unikorn</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body{
+    background:#FBFAFE; color:#251F33; font-family:'Manrope',sans-serif;
+    background-image: radial-gradient(circle at 50% 0%, #EFE9FB 0%, #FBFAFE 55%);
+  }
+  .glow:focus-within{ border-color:#7C5CFC; box-shadow:0 0 0 4px rgba(124,92,252,0.14); }
+  .chip:hover{ background:#F1ECFE; border-color:#D9CCFB; }
+</style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <header class="max-w-5xl mx-auto w-full px-6 pt-8 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-full bg-gradient-to-br from-[#7C5CFC] to-[#B79CFF]"></div>
+      <span class="font-bold text-[15px]">Unikorn</span>
+    </div>
+    <nav class="hidden sm:flex items-center gap-6 text-sm text-[#6E6480]">
+      <a href="#" class="hover:text-[#251F33]">How it works</a>
+      <a href="#" class="bg-[#251F33] text-white rounded-full px-4 py-1.5 hover:bg-[#7C5CFC] transition-colors">Sign in</a>
+    </nav>
+  </header>
+
+  <main class="flex-1 flex items-center justify-center px-6">
+    <div class="w-full max-w-xl -mt-10">
+      <h1 class="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight">
+        What did you build today?
+      </h1>
+      <p class="text-center text-[#6E6480] mt-2.5 text-[15px]">
+        Drop in your code — Unikorn turns it into slides you can actually show.
+      </p>
+
+      <div class="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow">
+        <div class="flex items-end gap-2">
+          <button class="shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center text-[#7C5CFC] bg-[#F1ECFE] hover:bg-[#E5DEFA] transition-colors" aria-label="Attach code or folder">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea rows="1" placeholder="Paste a repo link, or just tell me what you made…" class="flex-1 resize-none bg-transparent text-[15px] py-2.5 px-1 placeholder:text-[#B0A8C2] focus:outline-none"></textarea>
+          <button class="shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7C5CFC] to-[#9B7CFF] text-white flex items-center justify-center hover:opacity-90 transition-opacity" aria-label="Generate">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap justify-center gap-2 mt-4">
+        <button class="chip text-xs text-[#6E6480] border border-[#E5DEFA] bg-white rounded-full px-3.5 py-1.5 transition-colors">📁 Attach folder</button>
+        <button class="chip text-xs text-[#6E6480] border border-[#E5DEFA] bg-white rounded-full px-3.5 py-1.5 transition-colors">🔗 GitHub repo</button>
+        <button class="chip text-xs text-[#6E6480] border border-[#E5DEFA] bg-white rounded-full px-3.5 py-1.5 transition-colors">Paste a snippet</button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="text-center text-xs text-[#B0A8C2] pb-8">Every claim checked by Kane CLI</footer>
+</body>
+</html>
