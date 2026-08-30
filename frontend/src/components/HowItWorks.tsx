@@ -19,7 +19,7 @@ const steps = [
   {
     n: '03',
     title: 'Get the story',
-    desc: 'One-pager and tutorial, ready to share with investors, co-founders, and customers.',
+    desc: 'One-pager and tutorial, ready to share with investors, co-founders, customers.',
     icon: '🚀',
   },
 ]
