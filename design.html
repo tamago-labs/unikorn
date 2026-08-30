@@ -18,7 +18,9 @@
 <body class="min-h-screen flex flex-col">
   <header class="max-w-5xl mx-auto w-full px-6 pt-8 flex items-center justify-between">
     <div class="flex items-center gap-2">
-      <div class="w-7 h-7 rounded-full bg-gradient-to-br from-[#7C5CFC] to-[#B79CFF]"></div>
+      <div class="w-7 h-7 rounded-full bg-gradient-to-br from-[#7C5CFC] to-[#B79CFF] flex items-center justify-center" aria-hidden="true" style="filter:drop-shadow(0 1px 4px rgba(124,92,252,0.25))">
+        <span style="font-size:15px; line-height:1; filter:drop-shadow(0 1px 1px rgba(37,31,51,0.3))">🦄</span>
+      </div>
       <span class="font-bold text-[15px]">Unikorn</span>
     </div>
     <nav class="hidden sm:flex items-center gap-6 text-sm text-[#6E6480]">
@@ -27,13 +29,13 @@
     </nav>
   </header>
 
-  <main class="flex-1 flex items-center justify-center px-6">
-    <div class="w-full max-w-xl -mt-10">
+  <main class="min-h-[68vh] flex items-center justify-center px-6 py-10">
+    <div class="w-full max-w-xl">
       <h1 class="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight">
-        What did you build today?
+        You shipped the product.<br>We'll ship the story.
       </h1>
       <p class="text-center text-[#6E6480] mt-2.5 text-[15px]">
-        Drop in your code — Unikorn turns it into slides you can actually show.
+        Your agent + Kane shipped it. Unikorn makes it fundable, sellable, and shippable.
       </p>
 
       <div class="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow">
@@ -56,6 +58,14 @@
     </div>
   </main>
 
-  <footer class="text-center text-xs text-[#B0A8C2] pb-8">Every claim checked by Kane CLI</footer>
+  <section id="how-it-works" class="max-w-5xl mx-auto w-full px-6 py-16">
+    <h2 class="text-center text-2xl font-extrabold">How it works</h2>
+    <p class="text-center text-sm text-[#6E6480] mt-2">Your agent + Kane builds. Unikorn explains.</p>
+    <div class="grid sm:grid-cols-3 gap-4 mt-8">
+      <div class="bg-white border border-[#E5DEFA] rounded-2xl p-5"><div class="w-8 h-8 rounded-full bg-[#F1ECFE] text-[#7C5CFC] flex items-center justify-center text-sm font-bold">01</div><h3 class="font-bold text-sm mt-3">Drop in your code</h3><p class="text-sm text-[#6E6480] mt-1.5">Paste a GitHub repo, folder, or snippet. Ground truth from routes & README.</p></div>
+      <div class="bg-white border border-[#E5DEFA] rounded-2xl p-5"><div class="w-8 h-8 rounded-full bg-[#F1ECFE] text-[#7C5CFC] flex items-center justify-center text-sm font-bold">02</div><h3 class="font-bold text-sm mt-3">Unikorn does the rest</h3><p class="text-sm text-[#6E6480] mt-1.5">PRD, tutorial slides, and marketing one-pager from what you actually shipped.</p></div>
+      <div class="bg-white border border-[#E5DEFA] rounded-2xl p-5"><div class="w-8 h-8 rounded-full bg-[#F1ECFE] text-[#7C5CFC] flex items-center justify-center text-sm font-bold">03</div><h3 class="font-bold text-sm mt-3">Every claim verified</h3><p class="text-sm text-[#6E6480] mt-1.5">Kane CLI clicks through every slide and link — no hallucinated features.</p></div>
+    </div>
+  </section>
 </body>
 </html>

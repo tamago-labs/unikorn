@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import HowItWorks from '../components/HowItWorks'
 
 export default function HomePage() {
   const [value, setValue] = useState('')
@@ -38,11 +39,19 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col">
       <header className="max-w-5xl mx-auto w-full px-6 pt-8 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#7C5CFC] to-[#B79CFF]" aria-hidden />
+          <div
+            className="w-7 h-7 rounded-full bg-gradient-to-br from-[#7C5CFC] to-[#B79CFF] flex items-center justify-center"
+            aria-hidden
+            style={{ filter: 'drop-shadow(0 1px 4px rgba(124,92,252,0.25))' }}
+          >
+            <span style={{ fontSize: '15px', lineHeight: 1, filter: 'drop-shadow(0 1px 1px rgba(37,31,51,0.3))' }}>
+              🦄
+            </span>
+          </div>
           <span className="font-bold text-[15px]">Unikorn</span>
         </div>
         <nav className="hidden sm:flex items-center gap-6 text-sm text-[#6E6480]">
-          <a href="#" className="hover:text-[#251F33]">
+          <a href="#how-it-works" className="hover:text-[#251F33]">
             How it works
           </a>
           <a
@@ -54,16 +63,18 @@ export default function HomePage() {
         </nav>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-6">
-        <div className="w-full max-w-xl -mt-10">
+      <main className="min-h-[68vh] flex items-center justify-center px-6 py-10">
+        <div className="w-full max-w-xl">
           <h1
             data-testid="hero-title"
             className="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight"
           >
-            What did you build today?
+            You shipped the product.
+            <br />
+            We&apos;ll ship the story.
           </h1>
           <p className="text-center text-[#6E6480] mt-2.5 text-[15px]">
-            Drop in your code — Unikorn turns it into slides you can actually show.
+            Your agent + Kane shipped it. Unikorn makes it fundable, sellable, and shippable.
           </p>
 
           <div className="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow focus-within:border-[#7C5CFC] focus-within:shadow-[0_0_0_4px_rgba(124,92,252,0.14)]">
@@ -158,7 +169,7 @@ export default function HomePage() {
         </div>
       </main>
 
-      <footer className="text-center text-xs text-[#B0A8C2] pb-8">Every claim checked by Kane CLI</footer>
+      <HowItWorks />
     </div>
   )
 }
