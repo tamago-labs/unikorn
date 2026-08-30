@@ -18,8 +18,8 @@ const steps = [
   },
   {
     n: '03',
-    title: 'Get your docs',
-    desc: 'Marketing one-pager and developer tutorial generated from verified claims — self-contained HTML.',
+    title: 'Get the story',
+    desc: 'One-pager and tutorial, ready to share with investors, co-founders, and customers.',
     icon: '🚀',
   },
 ]
