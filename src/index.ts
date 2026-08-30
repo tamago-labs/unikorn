@@ -131,6 +131,9 @@ app.post('/api/ai/test', async (_req, res) => {
   if (!config.baseUrl || !config.apiKey) {
     return res.status(400).json({ error: 'Missing baseUrl or apiKey' })
   }
+  if (config.apiKey.includes('•')) {
+    return res.status(400).json({ error: 'API key appears masked or corrupted. Please re-enter and save.' })
+  }
   try {
     const url = `${config.baseUrl.replace(/\/$/, '')}/chat/completions`
     const response = await fetch(url, {

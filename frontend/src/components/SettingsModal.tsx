@@ -66,11 +66,13 @@ function AiTab() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const [keyEdited, setKeyEdited] = useState(false)
 
   useEffect(() => {
     fetchAiStatus().then((s) => {
       setStatus(s)
       setBaseUrl(s.baseUrl)
+      setApiKey(s.apiKey || '')
       setModel(s.model)
     }).catch(() => {})
   }, [])
@@ -81,6 +83,7 @@ function AiTab() {
       await saveAiConfig(baseUrl, apiKey, model)
       const s = await fetchAiStatus()
       setStatus(s)
+      setApiKey(s.apiKey || '')
       setTestResult({ ok: true, msg: 'Configuration saved.' })
     } catch (err: any) {
       setTestResult({ ok: false, msg: err.message })
