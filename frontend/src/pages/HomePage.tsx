@@ -53,12 +53,12 @@ export default function HomePage() {
             data-testid="hero-title"
             className="text-center text-[2rem] sm:text-[2.4rem] font-extrabold leading-tight"
           >
-            AI built the product.
+            You shipped the product.
             <br />
-            We build everything else.
+            We&apos;ll ship the story.
           </h1>
           <p className="text-center text-[#6E6480] mt-2.5 text-[15px]">
-            Paste a folder. Get a PRD, one-pager, and tutorial, built from your real working code.
+            Your agent + Kane shipped it. Unikorn makes it fundable, sellable, and shippable.
           </p>
 
           <div className="glow mt-8 border border-[#E5DEFA] bg-white rounded-3xl shadow-[0_8px_24px_-8px_rgba(124,92,252,0.18)] p-2.5 transition-shadow focus-within:border-[#7C5CFC] focus-within:shadow-[0_0_0_4px_rgba(124,92,252,0.14)]">
