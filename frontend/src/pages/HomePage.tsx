@@ -55,7 +55,7 @@ export default function HomePage() {
                 type="text"
                 value={folder}
                 onChange={(e) => setFolder(e.target.value)}
-                placeholder="Paste folder path or click Browse…"
+                placeholder="Paste full folder path…"
                 className="flex-1 bg-transparent text-[15px] py-2.5 px-1 placeholder:text-[#B0A8C2] focus:outline-none min-h-[44px]"
                 onKeyDown={(e) => { if (e.key === 'Enter') handleGenerate() }}
               />
