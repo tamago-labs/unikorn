@@ -108,7 +108,7 @@ function AiTab() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-[#6E6480]">Connect any OpenAI-compatible API. Works with OpenAI, LongCat, DeepSeek, and more.</p>
+      <p className="text-sm text-[#6E6480]">Connect any OpenAI-compatible API. Works with OpenAI, and more.</p>
       <div>
         <label className="block text-sm font-medium text-[#251F33] mb-1.5">Base URL</label>
         <input
