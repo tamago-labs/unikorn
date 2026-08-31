@@ -1,9 +1,9 @@
 {
-  "name": "unikorn",
+  "name": "@tamago-labs/unikorn",
   "version": "0.1.0",
-  "private": true,
-  "description": "Code is truth. Kane is proof. Tutorial + marketing from your real codebase, verified.",
+  "description": "Turn any codebase into a verified PRD, tutorial and slide deck with kane-cli",
   "type": "module",
+  "main": "dist/index.js",
   "bin": {
     "unikorn": "dist/index.js"
   },
@@ -18,12 +18,18 @@
     "dev:web": "npm --prefix frontend run dev",
     "build": "tsc && npm --prefix frontend run build",
     "start": "node dist/index.js",
-    "kane:ingest": "kane-cli context ingest ./PRD.md --mode agent",
-    "kane:extract": "kane-cli context extract --mode agent",
-    "kane:design": "kane-cli design tests --mode agent",
-    "kane:cover": "kane-cli cover",
-    "kane:demo": "kane-cli run \"Go to http://localhost:3000, assert hero title is 'What did you build today?', fill input with 'https://github.com/tamago-labs/everclaw', click Generate, assert no console errors\" --agent --headless"
+    "prepublishOnly": "npm run build"
   },
+  "keywords": [
+    "prd",
+    "kane-cli",
+    "browser-automation",
+    "ai",
+    "tutorial",
+    "slide-deck",
+    "verification",
+    "marketing"
+  ],
   "dependencies": {
     "express": "^4.21.0",
     "openai": "^7.8.0",
@@ -39,5 +45,17 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tamago-labs/unikorn.git"
+  },
+  "homepage": "https://github.com/tamago-labs/unikorn#readme",
+  "bugs": {
+    "url": "https://github.com/tamago-labs/unikorn/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

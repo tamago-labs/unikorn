@@ -10,17 +10,22 @@ interface RecentProject {
   artifacts: string[]
 }
 
-const recentProjects: RecentProject[] = [
-  { folder: './my-saas-app', date: '2h ago', artifacts: ['PRD', 'One-Pager', 'Tutorial'] },
-  { folder: './mobile-api', date: 'Yesterday', artifacts: ['PRD', 'Tutorial'] },
-]
-
 export default function HomePage() {
   const [folder, setFolder] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+  const [recentLoading, setRecentLoading] = useState(true)
 
   useEffect(() => {
     fetchWorkingFolder().then((r) => setFolder(r.folder)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/recent')
+      .then((r) => r.json())
+      .then((j) => setRecentProjects(j.projects || []))
+      .catch(() => setRecentProjects([]))
+      .finally(() => setRecentLoading(false))
   }, [])
 
   const canGenerate = folder.trim().length > 0
@@ -80,14 +85,21 @@ export default function HomePage() {
             </div>
           </div>
 
-          {recentProjects.length > 0 && (
+          {recentLoading ? (
+            <div className="mt-5 space-y-2">
+              <p className="text-xs font-semibold text-[#6E6480] uppercase tracking-wide">Recent</p>
+              <div className="w-full border border-[#E5DEFA] bg-white rounded-2xl px-4 py-3 animate-pulse">
+                <div className="h-4 w-32 bg-[#F1ECFE] rounded" />
+              </div>
+            </div>
+          ) : recentProjects.length > 0 ? (
             <div className="mt-5 space-y-2">
               <p className="text-xs font-semibold text-[#6E6480] uppercase tracking-wide">Recent</p>
               {recentProjects.map((p) => (
                 <button
                   key={p.folder}
                   onClick={() => handleRecentClick(p.folder)}
-                  className="w-full flex items-center justify-between border border-[#E5DEFA] bg-white rounded-2xl px-4 py-3 hover:border-[#D9CCFB] hover:bg-[#FBFAFE] transition-colors text-left"
+                  className="w-full flex items-center border border-[#E5DEFA] bg-white rounded-2xl px-4 py-3 hover:border-[#D9CCFB] hover:bg-[#FBFAFE] transition-colors text-left"
                   type="button"
                 >
                   <div className="flex items-center gap-3">
@@ -99,16 +111,11 @@ export default function HomePage() {
                       <p className="text-xs text-[#6E6480]">{p.date}</p>
                     </div>
                   </div>
-                  <div className="flex gap-1.5">
-                    {p.artifacts.map((a) => (
-                      <span key={a} className="text-[10px] font-medium text-[#7C5CFC] bg-[#F1ECFE] rounded-full px-2 py-0.5">
-                        {a}
-                      </span>
-                    ))}
-                  </div>
                 </button>
               ))}
             </div>
+          ) : (
+            <div className="mt-5 text-center text-xs text-[#8A7FA6]">No recent projects — paste a folder above to start</div>
           )}
 
           {toast && (

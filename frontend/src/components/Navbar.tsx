@@ -16,7 +16,14 @@ export default function Navbar() {
         <span className="font-bold text-[15px]">Unikorn</span>
       </div>
       <nav className="hidden sm:flex items-center gap-4 text-sm text-[#6E6480]">
-        <a href="#how-it-works" className="hover:text-[#251F33]">
+        <a
+          href="#how-it-works"
+          onClick={(e) => {
+            e.preventDefault()
+            document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }}
+          className="hover:text-[#251F33]"
+        >
           How it works
         </a>
         <a href="https://github.com/tamago-labs/unikorn" target="_blank" rel="noopener noreferrer" className="hover:text-[#251F33] flex items-center gap-1.5">

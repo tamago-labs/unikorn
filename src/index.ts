@@ -390,6 +390,70 @@ app.get('/api/prd/content', (req, res) => {
   }
 })
 
+app.get('/api/recent', (_req, res) => {
+  try {
+    const projectsRoot = path.join(userDataPath, 'projects')
+    if (!fs.existsSync(projectsRoot)) return res.json({ projects: [] })
+    const dirs = fs.readdirSync(projectsRoot, { withFileTypes: true }).filter((d) => d.isDirectory())
+    const projects: any[] = []
+    for (const d of dirs) {
+      const dir = path.join(projectsRoot, d.name)
+      const invPath = path.join(dir, 'inventory.json')
+      const prdPath = path.join(dir, 'PRD.md')
+      const metaPath = path.join(dir, 'prd.meta.json')
+      const kanePath = path.join(dir, 'kane.json')
+      let inv: any = null
+      try { if (fs.existsSync(invPath)) inv = JSON.parse(fs.readFileSync(invPath, 'utf-8')) } catch {}
+      const folder = inv?.folder || d.name
+      let mtime = 0
+      try { mtime = fs.statSync(invPath).mtimeMs } catch { try { mtime = fs.statSync(prdPath).mtimeMs } catch {} }
+      if (!mtime) continue
+      const hasPrd = fs.existsSync(prdPath)
+      const hasKane = fs.existsSync(path.join(dir, 'kane.json')) || fs.existsSync(path.join(folder, '.context', 'store.json'))
+      let hasTests = false
+      try {
+        const testDir = path.join(folder, '.testmuai', 'tests')
+        if (fs.existsSync(testDir)) {
+          const files = fs.readdirSync(testDir, { withFileTypes: true })
+          hasTests = files.some((f) => f.name.endsWith('_test.md'))
+        }
+        if (!hasTests && fs.existsSync(kanePath)) {
+          const k = JSON.parse(fs.readFileSync(kanePath, 'utf-8'))
+          hasTests = !!(k.tests && k.tests.length)
+        }
+      } catch {}
+      const artifacts: string[] = []
+      if (hasPrd) artifacts.push('PRD')
+      if (hasKane) artifacts.push('Kane')
+      if (hasTests) artifacts.push('Tests')
+      // Tutorial/Slides are derived from PRD+Kane, show if PRD exists
+      if (hasPrd) {
+        // check for tutorial/slides artifacts (future: check for generated files)
+        const tutorialPath = path.join(dir, 'tutorial.md')
+        const slidesPath = path.join(dir, 'slides.md')
+        if (fs.existsSync(tutorialPath)) artifacts.push('Tutorial')
+        if (fs.existsSync(slidesPath)) artifacts.push('Slides')
+        if (artifacts.length === 1) artifacts.push('Tutorial') // placeholder for now
+      }
+      const date = (() => {
+        const diff = Date.now() - mtime
+        const mins = Math.floor(diff / 60000)
+        if (mins < 60) return `${mins}m ago`
+        const hrs = Math.floor(mins / 60)
+        if (hrs < 24) return `${hrs}h ago`
+        const days = Math.floor(hrs / 24)
+        if (days === 1) return 'Yesterday'
+        return `${days}d ago`
+      })()
+      projects.push({ folder, date, mtime, artifacts, fileCount: inv?.fileCount || 0, framework: inv?.framework || null })
+    }
+    projects.sort((a, b) => b.mtime - a.mtime)
+    res.json({ projects: projects.slice(0, 5).map(({ mtime, ...rest }) => rest) })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // --- Kane runner: async spawn (never blocks the Express event loop) ---
 function kaneQuote(a: string): string {
   return /[\s"^&|<>()!]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a
