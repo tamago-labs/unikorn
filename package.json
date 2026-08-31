@@ -1,6 +1,6 @@
 {
   "name": "@tamago-labs/unikorn",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn any codebase into a verified PRD, tutorial and slide deck with kane-cli",
   "type": "module",
   "main": "dist/index.js",
