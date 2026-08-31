@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { fetchKaneStatus, fetchAiStatus, type KaneStatus, type AiStatus } from '../api'
+import { useState } from 'react'
+import { useStatus } from '../contexts/StatusContext'
 import KaneStatusModal from './KaneStatusModal'
 import SettingsModal from './SettingsModal'
 
@@ -8,21 +8,9 @@ interface StatusBadgesProps {
 }
 
 export default function StatusBadges({ onSettingsClick }: StatusBadgesProps) {
-  const [kane, setKane] = useState<KaneStatus | null>(null)
-  const [ai, setAi] = useState<AiStatus | null>(null)
+  const { kane, ai } = useStatus()
   const [kaneModalOpen, setKaneModalOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-
-  const refresh = useCallback(() => {
-    fetchKaneStatus().then(setKane).catch(() => setKane(null))
-    fetchAiStatus().then(setAi).catch(() => setAi(null))
-  }, [])
-
-  useEffect(() => {
-    refresh()
-    const id = setInterval(refresh, 30_000)
-    return () => clearInterval(id)
-  }, [refresh])
 
   return (
     <>

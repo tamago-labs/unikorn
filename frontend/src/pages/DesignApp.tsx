@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import StudioHeader from '../components/StudioHeader'
 import VerifiedCard from '../components/VerifiedCard'
+import PrdEmptyState from '../components/PrdEmptyState'
+import AiDrawer from '../components/AiDrawer'
+import PrdDrawer from '../components/PrdDrawer'
 import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
 import Gallery from '../components/Gallery'
-import { fetchWorkingFolder } from '../api'
+import { fetchWorkingFolder, scanFolder, fetchPrd, type Inventory } from '../api'
+import { useStatus } from '../contexts/StatusContext'
+import SettingsModal from '../components/SettingsModal'
 
 const tabs = [
   { id: 'tutorial', label: 'Tutorial', count: 4 },
@@ -34,18 +39,48 @@ const mockArtifacts: Record<string, Array<{ title: string; subtitle: string; bad
 export default function DesignApp() {
   const [activeTab, setActiveTab] = useState('tutorial')
   const [projectName, setProjectName] = useState('')
+  const [inventory, setInventory] = useState<Inventory | null>(null)
+  const [invLoading, setInvLoading] = useState(true)
+  const [prdExists, setPrdExists] = useState(false)
+  const [prdMeta, setPrdMeta] = useState<any>(null)
+  const [prdLoading, setPrdLoading] = useState(true)
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
+  const [prdDrawerOpen, setPrdDrawerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [searchParams] = useSearchParams()
+  const { ai } = useStatus()
 
   useEffect(() => {
     const folderParam = searchParams.get('folder')
     if (folderParam) {
       setProjectName(folderParam)
     } else {
-      fetchWorkingFolder().then((r) => {
-        setProjectName(r.folder)
-      }).catch(() => {})
+      fetchWorkingFolder().then((r) => setProjectName(r.folder)).catch(() => {})
     }
   }, [searchParams])
+
+  // scan + prd meta when projectName ready
+  useEffect(() => {
+    if (!projectName) return
+    let cancelled = false
+    setInvLoading(true)
+    setPrdLoading(true)
+    scanFolder(projectName)
+      .then((r) => { if (!cancelled) setInventory(r.inventory) })
+      .catch(() => { if (!cancelled) setInventory(null) })
+      .finally(() => { if (!cancelled) setInvLoading(false) })
+
+    fetchPrd(projectName)
+      .then((r) => { if (!cancelled) { setPrdExists(r.exists); setPrdMeta(r.meta) } })
+      .catch(() => { if (!cancelled) setPrdExists(false) })
+      .finally(() => { if (!cancelled) setPrdLoading(false) })
+    return () => { cancelled = true }
+  }, [projectName])
+
+  const refreshPrd = () => {
+    if (!projectName) return
+    fetchPrd(projectName).then((r) => { setPrdExists(r.exists); setPrdMeta(r.meta) }).catch(() => {})
+  }
 
   const artifacts = mockArtifacts[activeTab] || []
 
@@ -54,12 +89,38 @@ export default function DesignApp() {
       <StudioHeader projectName={projectName} />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        <VerifiedCard
-          claimsProved={35}
-          totalClaims={41}
-          source="acme-api@main"
-          runId="48"
-        />
+        {prdLoading ? (
+          <div className="bg-white border border-[#EFEAFB] rounded-2xl p-5 animate-pulse">
+            <div className="h-4 w-48 bg-[#F1ECFE] rounded" />
+            <div className="h-3 w-64 bg-[#FBFAFE] rounded mt-2" />
+          </div>
+        ) : prdExists ? (
+          <VerifiedCard
+            claimsProved={prdMeta?.claimsProved ?? 0}
+            totalClaims={prdMeta?.totalClaims ?? 0}
+            source={inventory?.framework ? `${projectName} · ${inventory.framework}` : projectName}
+            runId={prdMeta?.runId ?? (prdMeta?.createdAt ? new Date(prdMeta.createdAt).toLocaleDateString() : '—')}
+            onView={() => setPrdDrawerOpen(true)}
+          />
+        ) : (
+          <PrdEmptyState
+            fileCount={inventory?.fileCount ?? 0}
+            framework={inventory?.framework ?? null}
+            truncated={inventory?.truncated}
+            loading={invLoading}
+            onScan={() => setAiDrawerOpen(true)}
+            aiConfigured={ai?.configured}
+            onConfigureAi={() => setSettingsOpen(true)}
+          />
+        )}
+
+        {/* collapsed pill when drawer closed but PRD exists recently */}
+        {aiDrawerOpen === false && !prdExists && inventory && !invLoading && (
+          <div className="mt-2 text-xs text-[#8A7FA6]">
+            {inventory.routes.length > 0 && <span>{inventory.routes.length} routes detected · </span>}
+            {inventory.hasReadme ? 'README found' : 'No README — AI will ask clarifying questions'}
+          </div>
+        )}
 
         <div className="mt-8">
           <StudioTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
@@ -68,16 +129,25 @@ export default function DesignApp() {
         <Gallery>
           <NewArtifactCard label={`New ${activeTab}`} />
           {artifacts.map((a) => (
-            <ArtifactCard
-              key={a.title}
-              title={a.title}
-              subtitle={a.subtitle}
-              badge={a.badge}
-              draft={a.draft}
-            />
+            <ArtifactCard key={a.title} title={a.title} subtitle={a.subtitle} badge={a.badge} draft={a.draft} />
           ))}
         </Gallery>
       </main>
+
+      <AiDrawer open={aiDrawerOpen} folder={projectName} inventory={inventory} onClose={() => setAiDrawerOpen(false)} onDone={() => { refreshPrd(); }} />
+      <PrdDrawer open={prdDrawerOpen} folder={projectName} onClose={() => setPrdDrawerOpen(false)} />
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+
+      {/* collapsed PRD pill */}
+      {prdExists && !aiDrawerOpen && !prdDrawerOpen && (
+        <button
+          onClick={() => setPrdDrawerOpen(true)}
+          className="fixed bottom-4 right-4 bg-[#251F33] text-white text-xs font-medium rounded-full px-4 py-2 shadow-lg hover:bg-black transition-colors flex items-center gap-2"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          PRD ready — View
+        </button>
+      )}
     </div>
   )
 }

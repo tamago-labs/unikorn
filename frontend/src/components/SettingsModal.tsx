@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { fetchAiStatus, saveAiConfig, testAiConnection, fetchKaneStatus, fetchLogs, clearLogs, type AiStatus, type KaneStatus } from '../api'
+import { saveAiConfig, testAiConnection, fetchLogs, clearLogs } from '../api'
+import { useStatus } from '../contexts/StatusContext'
 
 type Tab = 'ai' | 'kane' | 'cli' | 'logs'
 
@@ -59,31 +60,28 @@ export default function SettingsModal({ onClose }: Props) {
 }
 
 function AiTab() {
-  const [status, setStatus] = useState<AiStatus | null>(null)
-  const [baseUrl, setBaseUrl] = useState('')
-  const [apiKey, setApiKey] = useState('')
-  const [model, setModel] = useState('')
+  const { ai: status, refresh } = useStatus()
+  const [baseUrl, setBaseUrl] = useState(status?.baseUrl ?? '')
+  const [apiKey, setApiKey] = useState(status?.apiKey ?? '')
+  const [model, setModel] = useState(status?.model ?? '')
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving, setSaving] = useState(false)
-  const [keyEdited, setKeyEdited] = useState(false)
 
   useEffect(() => {
-    fetchAiStatus().then((s) => {
-      setStatus(s)
-      setBaseUrl(s.baseUrl)
-      setApiKey(s.apiKey || '')
-      setModel(s.model)
-    }).catch(() => {})
-  }, [])
+    if (status) {
+      setBaseUrl(status.baseUrl)
+      // only overwrite apiKey if user hasn't started editing or key is masked from server
+      setApiKey(status.apiKey || '')
+      setModel(status.model)
+    }
+  }, [status])
 
   const handleSave = async () => {
     setSaving(true)
     try {
       await saveAiConfig(baseUrl, apiKey, model)
-      const s = await fetchAiStatus()
-      setStatus(s)
-      setApiKey(s.apiKey || '')
+      await refresh()
       setTestResult({ ok: true, msg: 'Configuration saved.' })
     } catch (err: any) {
       setTestResult({ ok: false, msg: err.message })
@@ -176,21 +174,27 @@ function AiTab() {
 }
 
 function KaneTab() {
-  const [kane, setKane] = useState<KaneStatus | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const refresh = () => {
-    setLoading(true)
-    fetchKaneStatus().then(setKane).catch(() => setKane(null)).finally(() => setLoading(false))
-  }
-
-  useEffect(() => { refresh() }, [])
+  const { kane, loading, isRefreshing, refresh } = useStatus()
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-bold text-[#251F33] mb-2">Kane CLI</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-[#251F33]">Kane CLI</h3>
+        <button
+          onClick={() => refresh()}
+          disabled={isRefreshing}
+          className="text-xs font-medium text-[#7C5CFC] hover:text-[#6E40E0] disabled:opacity-50 flex items-center gap-1"
+        >
+          {isRefreshing && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
+              <path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" />
+            </svg>
+          )}
+          Refresh
+        </button>
+      </div>
 
-      {loading ? (
+      {loading && !kane ? (
         <div className="flex items-center gap-2 text-sm text-[#6E6480] py-4">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
             <path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" />

@@ -7,7 +7,7 @@ interface VerifiedCardProps {
 }
 
 export default function VerifiedCard({ claimsProved, totalClaims, source, runId, onView }: VerifiedCardProps) {
-  const percent = Math.round((claimsProved / totalClaims) * 100)
+  const percent = totalClaims > 0 ? Math.round((claimsProved / totalClaims) * 100) : 0
 
   return (
     <div className="bg-white border border-[#EFEAFB] rounded-2xl p-5 flex items-center justify-between">
