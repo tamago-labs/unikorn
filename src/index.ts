@@ -3,6 +3,7 @@ import express from 'express'
 import path from 'path'
 import fs from 'fs'
 import crypto from 'crypto'
+import zlib from 'zlib'
 import { fileURLToPath } from 'url'
 import { createServer } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
@@ -937,6 +938,376 @@ app.post('/api/logs/clear', (_req, res) => {
   res.json({ ok: true })
 })
 
+// --- Artifacts (tutorial / slide deck) — PRD + collected runs + evidence screenshots → HTML ---
+function zipExtract(buf: Buffer, mapName: (name: string) => string | null, outDir: string, limit = 60): string[] {
+  const out: string[] = []
+  let eocd = -1
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break }
+  }
+  if (eocd < 0) return out
+  const count = buf.readUInt16LE(eocd + 10)
+  let off = buf.readUInt32LE(eocd + 16)
+  for (let n = 0; n < count && off + 46 <= buf.length; n++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) break
+    const method = buf.readUInt16LE(off + 10)
+    const compSize = buf.readUInt32LE(off + 20)
+    const nameLen = buf.readUInt16LE(off + 28)
+    const extraLen = buf.readUInt16LE(off + 30)
+    const commentLen = buf.readUInt16LE(off + 32)
+    const lho = buf.readUInt32LE(off + 42)
+    const name = buf.slice(off + 46, off + 46 + nameLen).toString('utf8')
+    const outName = mapName(name)
+    if (outName) {
+      try {
+        const lnLen = buf.readUInt16LE(lho + 26)
+        const leLen = buf.readUInt16LE(lho + 28)
+        const dataStart = lho + 30 + lnLen + leLen
+        const data = buf.slice(dataStart, dataStart + compSize)
+        const raw = method === 8 ? zlib.inflateRawSync(data) : method === 0 ? data : null
+        if (raw) {
+          fs.writeFileSync(path.join(outDir, outName), raw)
+          out.push(path.join(outDir, outName))
+          if (out.length >= limit) break
+        }
+      } catch {}
+    }
+    off += 46 + nameLen + extraLen + commentLen
+  }
+  return out
+}
+
+// Map each run record to its evidence pack (runs are sequential; pack mtimes line up)
+function mapRunPacks(folder: string, runs: any[]): Record<string, string> {
+  const map: Record<string, string> = {}
+  try {
+    const evDir = path.join(folder, '.testmuai', 'evidence')
+    if (!fs.existsSync(evDir)) return map
+    const packs = fs.readdirSync(evDir)
+      .filter((f) => f.endsWith('.evidence'))
+      .map((f) => ({ p: path.join(evDir, f), t: fs.statSync(path.join(evDir, f)).mtimeMs }))
+      .sort((a, b) => a.t - b.t)
+    const sorted = [...runs].sort((a, b) => String(a.finishedAt).localeCompare(String(b.finishedAt)))
+    const used = new Set<number>()
+    for (const r of sorted) {
+      const target = Date.parse(r.finishedAt)
+      if (!Number.isFinite(target)) continue
+      let best = -1
+      let bestDiff = Infinity
+      packs.forEach((p, i) => {
+        if (used.has(i)) return
+        const d = Math.abs(p.t - target)
+        if (d < bestDiff) { bestDiff = d; best = i }
+      })
+      if (best >= 0 && bestDiff < 10 * 60 * 1000) {
+        used.add(best)
+        map[r.file] = packs[best].p
+      }
+    }
+  } catch {}
+  return map
+}
+
+// Inline referenced asset images as base64 → truly self-contained pages
+function inlineImages(html: string, assetsDir: string): string {
+  return html.replace(/src=["'](assets\/[^"']+)["']/g, (m0: string, rel: string) => {
+    try {
+      const abs = path.join(assetsDir, rel.slice('assets/'.length))
+      const b = fs.readFileSync(abs)
+      if (b.length > 600_000) return m0
+      return `src="data:image/png;base64,${b.toString('base64')}"`
+    } catch {
+      return m0
+    }
+  })
+}
+
+function findArtifactDir(id: string): string | null {
+  const root = path.join(userDataPath, 'projects')
+  try {
+    for (const proj of fs.readdirSync(root)) {
+      const arts = path.join(root, proj, 'artifacts')
+      if (!fs.existsSync(arts)) continue
+      for (const kind of fs.readdirSync(arts)) {
+        const d = path.join(arts, kind, id)
+        if (fs.existsSync(path.join(d, 'meta.json'))) return d
+      }
+    }
+  } catch {}
+  return null
+}
+
+app.get('/api/artifacts', (req, res) => {
+  const folder = path.resolve((req.query.folder as string) || process.cwd())
+  const dir = path.join(getProjectDir(folder), 'artifacts')
+  const list: any[] = []
+  try {
+    for (const kind of fs.readdirSync(dir)) {
+      const kindDir = path.join(dir, kind)
+      if (!fs.statSync(kindDir).isDirectory()) continue
+      for (const id of fs.readdirSync(kindDir)) {
+        const metaPath = path.join(kindDir, id, 'meta.json')
+        if (!fs.existsSync(metaPath)) continue
+        try { list.push(JSON.parse(fs.readFileSync(metaPath, 'utf-8'))) } catch {}
+      }
+    }
+  } catch {}
+  list.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+  res.json({ artifacts: list, folder })
+})
+
+app.post('/api/artifacts/delete', (req, res) => {
+  const id = String(req.body.id || '')
+  const d = findArtifactDir(id)
+  if (!d) return res.status(404).json({ error: 'Artifact not found' })
+  try { fs.rmSync(d, { recursive: true, force: true }) } catch (e: any) { return res.status(500).json({ error: e.message }) }
+  res.json({ ok: true })
+})
+
+// Serve generated artifact pages
+app.get('/artifacts/:id', (req, res) => {
+  const d = findArtifactDir(req.params.id)
+  if (!d) return res.status(404).send('Artifact not found')
+  res.sendFile(path.join(d, 'index.html'))
+})
+
+app.get('/artifacts/:id/*', (req, res) => {
+  const d = findArtifactDir(req.params.id)
+  if (!d) return res.status(404).send('Artifact not found')
+  const rest = (req.params as any)[0] as string
+  const p = path.resolve(d, rest || '')
+  if (!isInsideFolder(d, p) || !fs.existsSync(p) || !fs.statSync(p).isFile()) return res.status(404).send('Not found')
+  res.sendFile(p)
+})
+
+// Inject a Prev/Next bar + arrow-key handler into every artifact page (deterministic navigation)
+function stripKeydownScripts(html: string): string {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (m) => (/ArrowLeft|ArrowRight/.test(m) ? '' : m))
+}
+
+function injectPageNav(html: string, prevFile: string | null, nextFile: string | null, pos: number, total: number): string {
+  const nav = `
+<div style="position:fixed;bottom:16px;right:16px;display:flex;gap:8px;align-items:center;z-index:50;font-family:Manrope,sans-serif">
+  ${prevFile ? `<a href="${prevFile}" style="text-decoration:none;padding:8px 14px;border-radius:9999px;background:#fff;border:1px solid #E5DEFA;color:#251F33;font-size:12px;font-weight:600">&#8592; Prev</a>` : ''}
+  <span style="font-size:12px;color:#8A7FA6;font-family:'JetBrains Mono',monospace">${pos} / ${total}</span>
+  ${nextFile ? `<a href="${nextFile}" style="text-decoration:none;padding:8px 14px;border-radius:9999px;background:#7C5CFC;color:#fff;font-size:12px;font-weight:600">Next &#8594;</a>` : `<a href="index.html" style="text-decoration:none;padding:8px 14px;border-radius:9999px;background:#fff;border:1px solid #E5DEFA;color:#251F33;font-size:12px;font-weight:600">Index</a>`}
+</div>
+<script>
+(function(){
+  var prev=${prevFile ? `"${prevFile}"` : 'null'},next=${nextFile ? `"${nextFile}"` : 'null'};
+  document.addEventListener('keydown',function(e){
+    if(e.target&&/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
+    if(e.key==='ArrowRight'&&next){e.preventDefault();location.href=next}
+    if(e.key==='ArrowLeft'&&prev){e.preventDefault();location.href=prev}
+  });
+})();
+</script>`
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${nav}\n</body>`)
+  return html + nav
+}
+
+const SAVE_ARTIFACT_TOOL: any = {
+  type: 'function',
+  function: {
+    name: 'save_artifact',
+    description: 'Save the generated artifact. Call once when every page is ready.',
+    parameters: {
+      type: 'object',
+      properties: {
+        index_html: { type: 'string', description: 'Viewer/cover page HTML with navigation links to every page' },
+        pages: {
+          type: 'array',
+          description: 'One entry per slide/step, in order',
+          items: {
+            type: 'object',
+            properties: {
+              file: { type: 'string', description: 'e.g. slide-01.html or step-01.html' },
+              title: { type: 'string' },
+              html: { type: 'string', description: 'Full self-contained HTML document' },
+            },
+            required: ['file', 'title', 'html'],
+          },
+        },
+      },
+      required: ['index_html', 'pages'],
+    },
+  },
+}
+
+const SHARED_RENDER_RULES = `HARD RULES for every HTML page:
+- Full HTML document: <!DOCTYPE html>, Tailwind via <script src="https://cdn.tailwindcss.com"></script>, fonts Manrope + JetBrains Mono via Google Fonts.
+- Self-contained: reference images ONLY as <img src="assets/..."> using the exact paths given in the manifest (they are inlined automatically afterwards). Never invent other image paths.
+- No external APIs, no fetch, no frameworks. Do NOT add navigation scripts — prev/next navigation and arrow-key handling are injected automatically by Unikorn. index_html lists every page as plain <a href> links.
+- Every factual product claim must trace to the PRD or the run evidence. Show run-verified facts with a small "✓ verified" badge quoting the observed value. Never invent features, metrics or numbers.
+- Footer stamp on every page: "Verified by Kane · <passed>/<total> checks passed".`
+
+function artifactOutlineSystem(kind: string, purpose: string): string {
+  if (kind === 'tutorial') {
+    return `You are Unikorn — design the outline for a step-by-step TUTORIAL built from a PRD and real verified test runs.
+One page per step, following the actual use-case flow. Each step reuses one acceptance criterion and its run-verified observed value.
+Output ONLY JSON: {"title":"...","subtitle":"...","sections":[{"id":"s1","title":"...","layout":"screenshot|bullets|split|hero","bullets":["..."],"verified":"<observed value from the runs, or null>","image":"<assets/... path from the manifest, or null>","source":"<file or 'AI-generated, unverified'>"}]}
+Rules: max 4 bullets per page, short. 'verified' MUST quote the real observed value from the runs when available. Images ONLY from the manifest. Layout 'screenshot' requires an image.`
+  }
+  if (purpose === 'pitch') {
+    return `You are Unikorn — design the outline for an investor PITCH DECK built from a PRD and real verified test runs.
+Arc: problem → solution (one-liner + demo hint) → how it works (product tour, 2-3 slides) → proof (verified-run stats + 2-3 concrete observed values) → tech stack → roadmap/ask.
+Output ONLY JSON: {"title":"...","subtitle":"...","sections":[{"id":"s1","title":"...","layout":"hero|bullets|proof|screenshot|split","bullets":["..."],"verified":"<observed value or null>","image":"<assets/... or null>","source":"<file or 'AI-generated, unverified'>"}]}
+Rules: max 5 bullets per slide. 'proof' slides must quote real observed values from the runs. Images ONLY from the manifest. Never invent metrics, users or revenue.`
+  }
+  return `You are Unikorn — design the outline for a product DEMO WALKTHROUGH deck built from a PRD and real verified test runs.
+One slide per feature/use-case in logical order: what it does, how to trigger it, the verified observed result.
+Output ONLY JSON: {"title":"...","subtitle":"...","sections":[{"id":"s1","title":"...","layout":"screenshot|bullets|split|hero","bullets":["..."],"verified":"<observed value or null>","image":"<assets/... or null>","source":"<file or 'AI-generated, unverified'>"}]}
+Rules: max 4 bullets per slide. 'verified' quotes the real observed value from the runs. Images ONLY from the manifest.`
+}
+
+const ARTIFACT_RENDER_SYSTEM = `You are Unikorn — render a final HTML artifact from an approved outline.
+Call save_artifact ONCE with:
+- index_html: a cover/viewer page listing all pages as <a href="slide-01.html"> links, with the deck title and a tiny arrow-key prev/next script (under 30 lines).
+- pages: one object per section, in order: file "slide-01.html"/"step-01.html" (zero-padded), title, html (full document).
+${SHARED_RENDER_RULES}
+Design: each page is a centered stage (max-w-5xl, min-h-screen flex) that looks good full-screen. Follow the user's design direction verbatim when given; otherwise house style: bg #FBFAFE, white cards with border #EFEAFB, accent gradient 135deg #7C5CFC→#B79CFF, Manrope text, JetBrains Mono for values, rounded-2xl.`
+
+function buildFallbackIndex(outline: any, pages: any[]): string {
+  const links = pages.map((p, i) => `<li><a class="text-[#7C5CFC] underline" href="${p.file}">${p.title || p.file}</a></li>`).join('')
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${outline?.title || 'Artifact'}</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-[#FBFAFE] min-h-screen p-10"><h1 class="text-2xl font-extrabold">${outline?.title || 'Artifact'}</h1><ul class="mt-4 space-y-2">${links}</ul></body></html>`
+}
+
+async function handleArtifactGeneration(ws: WebSocket, sess: WsSession, msg: any) {
+  const folder = path.resolve(msg.folder || sess.folder || process.cwd())
+  const kind: 'tutorial' | 'deck' = msg.kind === 'tutorial' ? 'tutorial' : 'deck'
+  const purpose = kind === 'deck' ? (msg.purpose === 'pitch' ? 'pitch' : 'demo') : 'tutorial'
+  const topic = String(msg.topic || 'Full product tour')
+  const audience = String(msg.audience || 'Developer')
+  const stylePrompt = String(msg.stylePrompt || '').slice(0, 2000)
+  const config = loadAiConfig()
+  if (!config.baseUrl || !config.apiKey) {
+    send(ws, { type: 'artifact:error', error: 'AI not configured — open Settings → AI Provider' })
+    return
+  }
+  const ac = new AbortController()
+  sess.abort = ac
+  try {
+    send(ws, { type: 'artifact:progress', status: 'Collecting PRD, run results and evidence screenshots…' })
+    const prdPath = getPrdMeta(folder).prdPath
+    const prd = fs.existsSync(prdPath) ? fs.readFileSync(prdPath, 'utf-8').slice(0, 12000) : ''
+    let runs: any[] = []
+    try { runs = JSON.parse(fs.readFileSync(path.join(getProjectDir(folder), 'runs.json'), 'utf-8')) } catch {}
+    const passed = runs.filter((r) => r.status === 'passed').length
+    const id = `${kind}-${Date.now().toString(36)}`
+    const dir = path.join(getProjectDir(folder), 'artifacts', kind, id)
+    const assetsDir = path.join(dir, 'assets')
+    fs.mkdirSync(assetsDir, { recursive: true })
+
+    // Extract step screenshots from evidence packs (mapped to runs by execution time)
+    const packMap = mapRunPacks(folder, runs)
+    const manifest: Array<{ image: string; test: string; verified: string }> = []
+    let imgCount = 0
+    for (const r of runs) {
+      if (imgCount >= 60) break
+      const pack = packMap[r.file]
+      if (!pack) continue
+      const testSlug = (r.file.split('/').pop() || 'test').replace(/_test\.md$/, '').replace(/[^\w-]/g, '_').slice(0, 48)
+      // Pack layout: tests/<test-id>/steps/<run>-<step>-<sub>/{annotated.png|screenshot.jpg}
+      // One image per step dir — prefer annotated.png (alphabetically first), else screenshot.jpg
+      const seenSteps = new Set<string>()
+      let idx = 0
+      const extracted = zipExtract(fs.readFileSync(pack), (name) => {
+        const m = name.match(/^tests\/[^/]+\/steps\/([\d-]+)\/(annotated\.png|screenshot\.jpg)$/)
+        if (!m) return null
+        if (seenSteps.has(m[1])) return null
+        seenSteps.add(m[1])
+        idx++
+        const ext = m[2].endsWith('.png') ? 'png' : 'jpg'
+        return `${testSlug}-${String(idx).padStart(2, '0')}.${ext}`
+      }, assetsDir, 6)
+      imgCount += extracted.length
+      for (const p of extracted) {
+        manifest.push({ image: 'assets/' + path.basename(p), test: r.file, verified: r.status })
+      }
+    }
+
+    send(ws, { type: 'artifact:progress', status: `Extracted ${imgCount} screenshots — drafting outline…` })
+
+    const runsDigest = runs.map((r) => {
+      const name = (r.file.split('/').pop() || r.file).replace(/_test\.md$/, '')
+      const state = r.finalState && Object.keys(r.finalState).length ? ` observed=${JSON.stringify(r.finalState)}` : ''
+      return `- [${r.status}] ${name}: ${r.oneLiner || ''}${state}`
+    }).join('\n')
+    const manifestList = manifest.map((m) => `- ${m.image} — ${m.test.replace('.testmuai/tests/', '')} (${m.verified})`).join('\n') || '(no screenshots available — use hero/bullets layouts only)'
+
+    // Shot 1 — outline JSON
+    const o1 = await callAiStream(
+      [
+        { role: 'system', content: artifactOutlineSystem(kind, purpose) },
+        { role: 'user', content: `PRD:\n${prd || '(no PRD found)'}\n\nRun evidence (verified behaviors):\n${runsDigest || '(none)'}\n\nCoverage: ${passed}/${runs.length} checks passed on the live app.\n\nAvailable screenshots:\n${manifestList}\n\nArtifact: ${kind}${kind === 'deck' ? ` (${purpose})` : ''}\nTopic: ${topic}\nAudience: ${audience}\n\nProduce the outline JSON now.` },
+      ],
+      undefined,
+      () => {},
+      () => {},
+      ac.signal,
+      false
+    )
+    let outline: any = null
+    const om = o1.content.match(/\{[\s\S]*\}/)
+    if (om) { try { outline = JSON.parse(om[0]) } catch {} }
+    if (!outline || !Array.isArray(outline.sections) || !outline.sections.length) {
+      throw new Error('Outline generation failed — try again')
+    }
+    send(ws, { type: 'artifact:outline', outline })
+    send(ws, { type: 'artifact:progress', status: `Outline ready (${outline.sections.length} pages) — rendering HTML…` })
+
+    // Shot 2 — render via save_artifact
+    let captured: any = null
+    await callAiStream(
+      [
+        { role: 'system', content: ARTIFACT_RENDER_SYSTEM },
+        { role: 'user', content: `Outline JSON:\n${JSON.stringify(outline)}\n\nScreenshot manifest:\n${manifestList}\n\nDesign direction from the user (highest priority for visuals):\n${stylePrompt || '(none — use the clean Unikorn house style)'}\n\nCall save_artifact now with index_html and every page.` },
+      ],
+      [SAVE_ARTIFACT_TOOL],
+      () => {},
+      (tcs) => {
+        const call = (tcs as any[]).find((t) => t.function?.name === 'save_artifact')
+        if (call) {
+          try { captured = JSON.parse(call.function.arguments || '{}') } catch {}
+        }
+      },
+      ac.signal,
+      true,
+      undefined,
+      { type: 'function', function: { name: 'save_artifact' } }
+    )
+    if (!captured || !Array.isArray(captured.pages) || !captured.pages.length) {
+      throw new Error('HTML rendering failed — try again')
+    }
+
+    const pages: Array<{ file: string; title: string; html: string }> = (captured.pages || [])
+      .map((p: any) => ({ file: String(p.file || '').replace(/[^\w.-]/g, ''), title: String(p.title || ''), html: String(p.html || '') }))
+      .filter((p: any) => p.file.endsWith('.html') && p.html)
+    // Deterministic navigation: strip any AI key-handlers, inject our own Prev/Next + arrows
+    const indexHtml = stripKeydownScripts(String(captured.index_html || buildFallbackIndex(outline, pages)))
+    fs.writeFileSync(path.join(dir, 'index.html'), injectPageNav(inlineImages(indexHtml, assetsDir), null, pages[0]?.file || null, 0, pages.length))
+    let saved = 0
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i]
+      const prev = i > 0 ? pages[i - 1].file : null
+      const next = i < pages.length - 1 ? pages[i + 1].file : null
+      fs.writeFileSync(path.join(dir, p.file), injectPageNav(inlineImages(stripKeydownScripts(p.html), assetsDir), prev, next, i + 1, pages.length))
+      saved++
+    }
+    const meta = { id, kind, purpose, title: String(outline.title || topic), topic, audience, stylePrompt, createdAt: new Date().toISOString(), pageCount: saved, model: config.model }
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2))
+    send(ws, { type: 'artifact:done', id, url: `/artifacts/${id}/`, pageCount: saved, title: meta.title })
+  } catch (err: any) {
+    if (err.name === 'AbortError') send(ws, { type: 'artifact:aborted' })
+    else {
+      console.error('artifact generation error', err.message)
+      send(ws, { type: 'artifact:error', error: err.message || 'Unknown error' })
+    }
+  } finally {
+    sess.abort = undefined
+  }
+}
+
 // --- WebSocket + AI PRD streaming ---
 const wss = new WebSocketServer({ server })
 
@@ -1583,6 +1954,11 @@ wss.on('connection', (ws) => {
       if (sess.abort) sess.abort.abort()
       sess.pendingQuestions = undefined
       send(ws, { type: 'prd:aborted' })
+    } else if (msg.type === 'artifact:start') {
+      const folder = msg.folder || sess.folder || process.cwd()
+      sess.folder = path.resolve(folder)
+      if (sess.abort) sess.abort.abort()
+      await handleArtifactGeneration(ws, sess, msg)
     }
   })
   ws.on('close', () => {

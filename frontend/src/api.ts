@@ -203,6 +203,28 @@ export async function fetchRuns(folder: string): Promise<{ runs: KaneRunRecord[]
   return jsonFetch(`${API_BASE}/kane/runs?folder=${encodeURIComponent(folder)}`)
 }
 
+// --- Artifacts (tutorial / slide deck) ---
+
+export interface ArtifactMeta {
+  id: string
+  kind: 'tutorial' | 'deck'
+  purpose?: string
+  title: string
+  topic: string
+  audience: string
+  stylePrompt: string
+  createdAt: string
+  pageCount: number
+  model?: string
+}
+
+export async function fetchArtifacts(folder: string): Promise<{ artifacts: ArtifactMeta[] }> {
+  return jsonFetch(`${API_BASE}/artifacts?folder=${encodeURIComponent(folder)}`)
+}
+
+export const deleteArtifact = (id: string) =>
+  postJson(`${API_BASE}/artifacts/delete`, { id }) as Promise<{ ok: boolean }>
+
 export async function fetchHealth(): Promise<{ status: string; kaneJobs?: boolean }> {
   const res = await fetch(`${API_BASE}/health`)
   return res.json()

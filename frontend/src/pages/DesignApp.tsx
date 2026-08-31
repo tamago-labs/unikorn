@@ -10,33 +10,17 @@ import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
 import Gallery from '../components/Gallery'
-import { fetchWorkingFolder, scanFolder, fetchPrd, fetchPrdContent, type Inventory } from '../api'
+import ArtifactWizard from '../components/ArtifactWizard'
+import { fetchWorkingFolder, scanFolder, fetchPrd, fetchPrdContent, fetchArtifacts, type Inventory, type ArtifactMeta } from '../api'
 import { useStatus } from '../contexts/StatusContext'
 import SettingsModal from '../components/SettingsModal'
 
 const tabs = [
-  { id: 'tutorial', label: 'Tutorial', count: 4 },
-  { id: 'slides', label: 'Slide deck', count: 2 },
-  { id: 'marketing', label: 'Marketing', count: 6 },
-  { id: 'kane', label: 'Kane', count: 0 },
+  { id: 'tutorial', label: 'Tutorial' },
+  { id: 'slides', label: 'Slide deck' },
+  { id: 'marketing', label: 'Marketing' },
+  { id: 'kane', label: 'Kane' },
 ]
-
-const mockArtifacts: Record<string, Array<{ title: string; subtitle: string; badge: string; draft?: boolean }>> = {
-  tutorial: [
-    { title: 'Developer onboarding', subtitle: 'v3 · edited 2h ago', badge: '4 slides' },
-    { title: 'Quickstart — CLI users', subtitle: 'v1 · edited yesterday', badge: '6 slides' },
-    { title: 'Non-technical walkthrough', subtitle: 'v1 · draft', badge: '3 slides', draft: true },
-  ],
-  slides: [
-    { title: 'Investor pitch', subtitle: 'v2 · edited 3h ago', badge: '12 slides' },
-    { title: 'Product demo', subtitle: 'v1 · edited last week', badge: '8 slides' },
-  ],
-  marketing: [
-    { title: 'Landing page copy', subtitle: 'v4 · edited 1h ago', badge: '6 sections' },
-    { title: 'Twitter thread', subtitle: 'v2 · edited yesterday', badge: '8 tweets' },
-    { title: 'README hero section', subtitle: 'v1 · edited 2 days ago', badge: '1 page' },
-  ],
-}
 
 export default function DesignApp() {
   const [activeTab, setActiveTab] = useState('tutorial')
@@ -50,6 +34,9 @@ export default function DesignApp() {
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [prdDrawerOpen, setPrdDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([])
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardKind, setWizardKind] = useState<'deck' | 'tutorial'>('deck')
   const [searchParams] = useSearchParams()
   const { ai } = useStatus()
 
@@ -62,7 +49,12 @@ export default function DesignApp() {
     }
   }, [searchParams])
 
-  // scan + prd meta when projectName ready
+  const refreshArtifacts = () => {
+    if (!projectName) return
+    fetchArtifacts(projectName).then((r) => setArtifacts(r.artifacts || [])).catch(() => setArtifacts([]))
+  }
+
+  // scan + prd meta + artifacts when projectName ready
   useEffect(() => {
     if (!projectName) return
     let cancelled = false
@@ -84,6 +76,8 @@ export default function DesignApp() {
       })
       .catch(() => { if (!cancelled) setPrdExists(false) })
       .finally(() => { if (!cancelled) setPrdLoading(false) })
+
+    refreshArtifacts()
     return () => { cancelled = true }
   }, [projectName])
 
@@ -96,7 +90,19 @@ export default function DesignApp() {
     }).catch(() => {})
   }
 
-  const artifacts = mockArtifacts[activeTab] || []
+  const openWizard = (kind: 'deck' | 'tutorial') => {
+    setWizardKind(kind)
+    setWizardOpen(true)
+  }
+
+  const tabCounts: Record<string, number> = {
+    tutorial: artifacts.filter((a) => a.kind === 'tutorial').length,
+    slides: artifacts.filter((a) => a.kind === 'deck').length,
+    marketing: 0,
+    kane: 0,
+  }
+
+  const visibleArtifacts = artifacts.filter((a) => (activeTab === 'tutorial' && a.kind === 'tutorial') || (activeTab === 'slides' && a.kind === 'deck'))
 
   return (
     <div className="min-h-screen bg-[#FBFAFE]">
@@ -158,25 +164,51 @@ export default function DesignApp() {
         )}
 
         <div className="mt-8">
-          <StudioTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+          <StudioTabs tabs={tabs.map((t) => ({ ...t, count: tabCounts[t.id] ?? 0 }))} active={activeTab} onChange={setActiveTab} />
         </div>
 
         {activeTab === 'kane' ? (
           <div className="mt-6">
             <KaneFlow folder={projectName} />
           </div>
+        ) : activeTab === 'marketing' ? (
+          <div className="mt-6 bg-white border border-[#EFEAFB] rounded-2xl p-8 text-center">
+            <p className="text-sm font-semibold text-[#251F33]">Marketing resources — coming later</p>
+            <p className="text-xs text-[#8A7FA6] mt-1">One-pagers and landing copy will build on the same verified PRD + run data.</p>
+          </div>
         ) : (
           <Gallery>
-            <NewArtifactCard label={`New ${activeTab}`} />
-            {artifacts.map((a) => (
-              <ArtifactCard key={a.title} title={a.title} subtitle={a.subtitle} badge={a.badge} draft={a.draft} />
+            <NewArtifactCard
+              label={activeTab === 'tutorial' ? 'New tutorial' : 'New slide deck'}
+              onClick={() => openWizard(activeTab === 'tutorial' ? 'tutorial' : 'deck')}
+            />
+            {visibleArtifacts.map((a) => (
+              <ArtifactCard
+                key={a.id}
+                title={a.title}
+                subtitle={`${a.kind === 'deck' ? (a.purpose === 'pitch' ? 'Pitch' : 'Demo walkthrough') : 'Tutorial'} · ${new Date(a.createdAt).toLocaleDateString()}`}
+                badge={`${a.pageCount} pages`}
+                onClick={() => window.open(`/artifacts/${a.id}/`, '_blank')}
+              />
             ))}
+            {visibleArtifacts.length === 0 && (
+              <div className="bg-white border border-[#EFEAFB] rounded-2xl p-6 text-sm text-[#8A7FA6] col-span-2">
+                Nothing here yet — create your first {activeTab === 'tutorial' ? 'tutorial' : 'deck'} from the verified PRD + run data.
+              </div>
+            )}
           </Gallery>
         )}
       </main>
 
       <AiDrawer open={aiDrawerOpen} folder={projectName} inventory={inventory} onClose={() => setAiDrawerOpen(false)} onDone={() => { refreshPrd(); }} />
       <PrdDrawer open={prdDrawerOpen} folder={projectName} onClose={() => setPrdDrawerOpen(false)} />
+      <ArtifactWizard
+        open={wizardOpen}
+        folder={projectName}
+        prdContent={prdContent}
+        onClose={() => setWizardOpen(false)}
+        onDone={refreshArtifacts}
+      />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
       {/* collapsed PRD pill */}
