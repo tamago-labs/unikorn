@@ -3,11 +3,17 @@
 [![npm version](https://img.shields.io/npm/v/@tamago-labs/unikorn.svg)](https://www.npmjs.com/package/@tamago-labs/unikorn)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**Turns any codebase into a PRD, verifies it with kane-cli, then builds tutorials and slide decks from real, run-verified behavior.**
+**Your agent + Kane AI made the product. Unikorn turns it into the PRD, tutorial, pitch deck, and everything needed to explain what you shipped.**
 
-Unikorn is a local-first application that combines **AI PRD generation (any OpenAI-compatible API)** with **browser automation through kane-cli**. You give it a folder, it scans the code, drafts a PRD where every claim carries a `[src: path]` citation, verifies the PRD against the running app with real browser tests, and uses the collected proof to generate tutorials and slide decks as self-contained HTML. The web UI runs at http://localhost:3001, while all Unikorn data is stored locally under ~/.unikorn.
+<img width="1376" height="743" alt="Screenshot 2026-08-31 211230" src="https://github.com/user-attachments/assets/30930b45-4da8-40b9-aaa8-d1dd1a2f32c9" />
 
-**Every claim traces back to real code. Every "verified" badge quotes a value a real browser run observed.**
+Unikorn is a local-first application that combines **AI product understanding** with **real-browser automation through kane-cli**. You give it a project folder, it scans the codebase and generates a cited PRD, turns its use cases into runnable browser scenarios, and runs them against the real application through Kane.
+
+Unikorn collects the results of those runs as persistent product evidence — including screenshots, observed values, browser state, console output, and network activity. That evidence becomes the foundation for generating **tutorials, pitch decks, and other self-contained HTML artifacts** that reflect what the product actually does.
+
+The web UI runs at `http://localhost:3001`, while all Unikorn data is stored locally under `~/.unikorn`.
+
+**Every claim traces back to source code. Every verified result comes from a real browser run.**
 
 ## Overview
 
