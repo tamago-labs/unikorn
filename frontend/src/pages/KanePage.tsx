@@ -30,8 +30,8 @@ export default function KanePage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             Back to PRD
           </button>
-          <h1 className="text-lg font-extrabold text-[#251F33]">Verify with Kane</h1>
-          <span className="text-xs text-[#8A7FA6]">Long-running — you can leave this page and come back. Runs persist.</span>
+          <h1 className="text-lg font-extrabold text-[#251F33]">Kane Command Center</h1>
+          <span className="text-xs text-[#8A7FA6]">Run long-running tests, capture real product behavior, and come back anytime to review the results and evidence.</span>
         </div>
 
         {!projectName ? (

@@ -519,12 +519,7 @@ export default function KaneFlow({ folder }: Props) {
 
   return (
     <div className="bg-white border border-[#EFEAFB] rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-bold text-[#251F33]">Kane Assurance</h3>
-        <button onClick={fetchAssurance} className="text-xs border border-[#E5DEFA] rounded-full px-3 py-1">
-          Refresh
-        </button>
-      </div>
+      <p className="text-xs text-[#6E6480] mb-3">How to use: 1 Prepare dev server → 2 Ingest PRD → 3 Design → 4 Run tests — then go back to generate tutorials and decks.</p>
 
       <div className="mb-4 flex items-center justify-between bg-[#FBFAFE] border border-[#E5DEFA] rounded-xl p-3">
         <div>
@@ -820,7 +815,7 @@ export default function KaneFlow({ folder }: Props) {
       )}
 
       <div className="mt-4 text-[11px] text-[#8A7FA6]">
-        <p>Pipeline: PRD → ingest → review → design → run tests → collect info. Every step streams live; when Kane pauses, answer inline.</p>
+        <p>When runs are collected, go back to the PRD page to generate tutorials and slide decks from verified proof.</p>
       </div>
 
       {/* Run result drawer */}

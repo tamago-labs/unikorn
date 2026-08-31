@@ -188,7 +188,7 @@ export default function AiDrawer({ open, folder, inventory, onClose, onDone }: P
           <div>
             <h2 className="text-sm font-bold text-[#251F33] flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#7C5CFC] animate-pulse" />
-              Unikorn AI
+              Generating PRD
             </h2>
             <p className="text-xs text-[#8A7FA6] font-mono truncate max-w-[300px]">{folder} {inventory ? `· ${inventory.fileCount} files` : ''}</p>
           </div>
