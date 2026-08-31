@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basic Arithmetic Operations</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Manrope', sans-serif; background: #FBFAFE; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .accent-gradient { background: linear-gradient(135deg, #7C5CFC 0%, #B79CFF 100%); }
+  .card { background: #FFFFFF; border: 1px solid #EFEAFB; border-radius: 1rem; }
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-8">
+  <div class="max-w-2xl w-full">
+    <div class="text-center mb-12">
+      <div class="inline-block accent-gradient text-white text-xs font-semibold px-3 py-1 rounded-full mb-4 tracking-wide uppercase">Calculator App Tutorial</div>
+      <h1 class="text-4xl font-extrabold text-gray-900 mb-3">Basic Arithmetic Operations</h1>
+      <p class="text-lg text-gray-500">Learn how to perform calculations using the Calculator App</p>
+    </div>
+    <div class="space-y-3">
+      <a href="slide-01.html" class="card block p-5 hover:shadow-lg transition-shadow group">
+        <div class="flex items-center gap-4">
+          <span class="mono text-sm font-semibold text-purple-600 bg-purple-50 w-8 h-8 rounded-lg flex items-center justify-center">01</span>
+          <span class="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">Entering Digits</span>
+          <span class="ml-auto text-gray-400 group-hover:text-purple-500 transition-colors">→</span>
+        </div>
+      </a>
+      <a href="slide-02.html" class="card block p-5 hover:shadow-lg transition-shadow group">
+        <div class="flex items-center gap-4">
+          <span class="mono text-sm font-semibold text-purple-600 bg-purple-50 w-8 h-8 rounded-lg flex items-center justify-center">02</span>
+          <span class="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">Choosing an Operator</span>
+          <span class="ml-auto text-gray-400 group-hover:text-purple-500 transition-colors">→</span>
+        </div>
+      </a>
+      <a href="slide-03.html" class="card block p-5 hover:shadow-lg transition-shadow group">
+        <div class="flex items-center gap-4">
+          <span class="mono text-sm font-semibold text-purple-600 bg-purple-50 w-8 h-8 rounded-lg flex items-center justify-center">03</span>
+          <span class="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">Evaluating an Expression</span>
+          <span class="ml-auto text-gray-400 group-hover:text-purple-500 transition-colors">→</span>
+        </div>
+      </a>
+      <a href="slide-04.html" class="card block p-5 hover:shadow-lg transition-shadow group">
+        <div class="flex items-center gap-4">
+          <span class="mono text-sm font-semibold text-purple-600 bg-purple-50 w-8 h-8 rounded-lg flex items-center justify-center">04</span>
+          <span class="font-semibold text-gray-800 group-hover:text-purple-700 transition-colors">Preventing Repeated Calculation</span>
+          <span class="ml-auto text-gray-400 group-hover:text-purple-500 transition-colors">→</span>
+        </div>
+      </a>
+    </div>
+    <p class="text-center text-xs text-gray-400 mt-8">Use ← → arrow keys to navigate</p>
+  </div>
+  
+
+<div style="position:fixed;bottom:16px;right:16px;display:flex;gap:8px;align-items:center;z-index:50;font-family:Manrope,sans-serif">
+  
+  <span style="font-size:12px;color:#8A7FA6;font-family:'JetBrains Mono',monospace">0 / 4</span>
+  <a href="slide-01.html" style="text-decoration:none;padding:8px 14px;border-radius:9999px;background:#7C5CFC;color:#fff;font-size:12px;font-weight:600">Next &#8594;</a>
+</div>
+<script>
+(function(){
+  var prev=null,next="slide-01.html";
+  document.addEventListener('keydown',function(e){
+    if(e.target&&/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
+    if(e.key==='ArrowRight'&&next){e.preventDefault();location.href=next}
+    if(e.key==='ArrowLeft'&&prev){e.preventDefault();location.href=prev}
+  });
+})();
+</script>
+</body>
+</html>

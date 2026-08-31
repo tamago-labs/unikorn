@@ -926,8 +926,8 @@ app.post('/api/kane/cover', async (req, res) => {
   res.json({ ok: r.code === 0, stdout: r.stdout.slice(-4000), code: r.code, cover: parseMaybeJson(r.stdout) })
 })
 
-// Dev server prepare for kane tests
-const devServers = new Map<string, ChildProcess>()
+// Dev server prepare for kane tests — port-keyed so Stop kills any server on that PRD port
+const devServers = new Map<number, { child: ChildProcess; folder: string; port: number }>()
 
 app.post('/api/kane/prepare', async (req, res) => {
   const folder = path.resolve(req.body.folder || process.cwd())
@@ -942,9 +942,8 @@ app.post('/api/kane/prepare', async (req, res) => {
     clearTimeout(t)
     if (probe.ok) return res.json({ ok: true, message: 'already running', port, startUrl: url })
   } catch {}
-  const key = folder
-  const existing = devServers.get(key)
-  if (existing && !existing.killed) return res.json({ ok: true, message: 'already running', port, startUrl: url })
+  const existing = devServers.get(port)
+  if (existing && existing.child && !existing.child.killed) return res.json({ ok: true, message: 'already running', port, startUrl: url, owner: existing.folder })
   try {
     const child = spawn('npm', ['run', 'dev', '--', '--port', String(port), '--host', '127.0.0.1'], {
       cwd: folder,
@@ -954,7 +953,7 @@ app.post('/api/kane/prepare', async (req, res) => {
     })
     child.on('error', (e) => console.error('dev server error', e.message))
     child.unref()
-    devServers.set(key, child)
+    devServers.set(port, { child, folder, port })
     console.log(`Dev server spawned for ${folder} on port ${port} pid ${child.pid}`)
     res.json({ ok: true, port, startUrl: url, pid: child.pid })
   } catch (err: any) {
@@ -967,26 +966,48 @@ app.get('/api/kane/prepare/status', async (req, res) => {
   const inv = (() => { try { return scanInventory(folder) } catch { return null } })()
   const port = inv?.devPort || 5173
   const url = `http://localhost:${port}`
+  const owned = devServers.get(port)
   try {
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 3000)
     const r = await fetch(url, { signal: controller.signal })
     clearTimeout(t)
-    res.json({ ok: r.ok, status: r.status, port, startUrl: url, running: r.ok })
+    res.json({ ok: r.ok, status: r.status, port, startUrl: url, running: r.ok, owner: owned?.folder || null, foreign: !!owned && path.resolve(owned.folder) !== path.resolve(folder) })
   } catch (err: any) {
-    res.json({ ok: false, running: false, port, startUrl: url, error: err.message })
+    res.json({ ok: false, running: false, port, startUrl: url, owner: owned?.folder || null, error: err.message })
   }
 })
 
-app.post('/api/kane/prepare/stop', (req, res) => {
+app.post('/api/kane/prepare/stop', async (req, res) => {
   const folder = path.resolve(req.body.folder || process.cwd())
-  const child = devServers.get(folder)
-  if (child && child.pid) {
-    killTree(child)
-    devServers.delete(folder)
-    return res.json({ ok: true, stopped: true })
+  const inv = (() => { try { return scanInventory(folder) } catch { return null } })()
+  const port = inv?.devPort || 5173
+  let rec = devServers.get(port)
+  // fallback: find by folder if port mismatch (e.g. devPort changed)
+  if (!rec) {
+    for (const v of devServers.values()) if (path.resolve(v.folder) === path.resolve(folder)) { rec = v; break }
   }
-  res.json({ ok: true, stopped: false, message: 'not running' })
+  if (rec && rec.child?.pid) {
+    killTree(rec.child)
+    devServers.delete(rec.port)
+    return res.json({ ok: true, stopped: true, port: rec.port })
+  }
+  // not tracked by unikorn — kill any process listening on that PRD port (external npm run dev)
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf-8' })
+      const pids = [...out.matchAll(/\\s+(\\d+)\\s*$/gm)].map((m) => Number(m[1])).filter(Boolean)
+      const uniq = [...new Set(pids)]
+      for (const pid of uniq) {
+        try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }) } catch {}
+      }
+      if (uniq.length) return res.json({ ok: true, stopped: true, port, external: true, pids: uniq })
+    } else {
+      try { execSync(`lsof -ti :${port} | xargs kill -9`, { stdio: 'ignore' }) } catch {}
+      return res.json({ ok: true, stopped: true, port, external: true })
+    }
+  } catch {}
+  res.json({ ok: true, stopped: false, message: 'not running', port })
 })
 
 // Kane status (global)

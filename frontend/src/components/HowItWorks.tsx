@@ -6,20 +6,20 @@ type Variant = 'A' | 'B' | 'C'
 const steps = [
   {
     n: '01',
-    title: 'Draft PRD',
-    desc: 'Unikorn scans your code and generates a PRD grounded in what it actually does.',
+    title: 'Discover what you built',
+    desc: 'Unikorn scans your codebase and generates a cited PRD grounded in the source.',
     icon: '📁',
   },
   {
     n: '02',
-    title: 'Auto-verify',
-    desc: 'Kane CLI auto-verifies every claim and captures screenshots as proof.',
+    title: 'Verify what it does',
+    desc: 'Kane tests the running product in a real browser and collects evidence from every run.',
     icon: '✅',
   },
   {
     n: '03',
-    title: 'Get the story',
-    desc: 'One-pager and tutorial, ready to share with investors, co-founders, customers.',
+    title: 'Create from what’s proven',
+    desc: 'Use the PRD and collected proof to generate tutorials, pitch decks, and other product artifacts.',
     icon: '🚀',
   },
 ]
@@ -35,7 +35,7 @@ function VariantA() {
   return (
     <section id="how-it-works" className="max-w-5xl mx-auto w-full px-6 py-16">
       <h2 className="text-center text-2xl font-extrabold">How it works</h2>
-      <p className="text-center text-sm text-[#6E6480] mt-2">Set up your AI provider and Kane CLI in settings. Then you&apos;re ready to go.</p>
+      <p className="text-center text-sm text-[#6E6480] mt-2">Connect your AI provider and Kane CLI once. Then turn any codebase into a verified story.</p>
       <div className="grid sm:grid-cols-3 gap-4 mt-8">
         {steps.map((s) => (
           <div key={s.n} className="bg-white border border-[#E5DEFA] rounded-2xl p-5">

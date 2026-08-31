@@ -8,9 +8,10 @@ interface Props {
   source: string
   updatedAt: string | null
   onView: () => void
+  onVerify?: () => void
 }
 
-export default function PrdSummaryCard({ title, overview, ucCount, acCount, startUrl, hasAuth, source, updatedAt, onView }: Props) {
+export default function PrdSummaryCard({ title, overview, ucCount, acCount, startUrl, hasAuth, source, updatedAt, onView, onVerify }: Props) {
   return (
     <div className="bg-white border border-[#EFEAFB] rounded-2xl p-5">
       <div className="flex items-start justify-between gap-4">
@@ -36,6 +37,14 @@ export default function PrdSummaryCard({ title, overview, ucCount, acCount, star
             <span className="text-xs font-bold text-[#7C5CFC] leading-none">0%</span>
             <span className="text-[8px] text-[#8A7FA6]">tested</span>
           </div>
+          {onVerify && (
+            <button
+              onClick={onVerify}
+              className="text-xs font-bold bg-[#7C5CFC] text-white rounded-full px-4 py-1.5 hover:opacity-90 transition-opacity"
+            >
+              Verify with Kane →
+            </button>
+          )}
           <button
             onClick={onView}
             className="text-xs font-medium border border-[#E5DEFA] rounded-full px-4 py-1.5 hover:bg-[#F1ECFE] transition-colors"

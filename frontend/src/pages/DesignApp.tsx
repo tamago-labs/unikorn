@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import StudioHeader from '../components/StudioHeader'
 import PrdSummaryCard, { parsePrdMarkdown } from '../components/PrdSummaryCard'
 import PrdEmptyState from '../components/PrdEmptyState'
 import AiDrawer from '../components/AiDrawer'
 import PrdDrawer from '../components/PrdDrawer'
-import KaneFlow from '../components/KaneFlow'
 import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
@@ -19,7 +19,6 @@ const tabs = [
   { id: 'tutorial', label: 'Tutorial' },
   { id: 'slides', label: 'Slide deck' },
   { id: 'marketing', label: 'Marketing' },
-  { id: 'kane', label: 'Kane' },
 ]
 
 export default function DesignApp() {
@@ -38,6 +37,7 @@ export default function DesignApp() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardKind, setWizardKind] = useState<'deck' | 'tutorial'>('deck')
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { ai } = useStatus()
 
   useEffect(() => {
@@ -99,7 +99,6 @@ export default function DesignApp() {
     tutorial: artifacts.filter((a) => a.kind === 'tutorial').length,
     slides: artifacts.filter((a) => a.kind === 'deck').length,
     marketing: 0,
-    kane: 0,
   }
 
   const visibleArtifacts = artifacts.filter((a) => (activeTab === 'tutorial' && a.kind === 'tutorial') || (activeTab === 'slides' && a.kind === 'deck'))
@@ -128,6 +127,7 @@ export default function DesignApp() {
                 source={inventory?.framework ? `${projectName} · ${inventory.framework}` : projectName}
                 updatedAt={prdMeta?.updatedAt || prdMeta?.createdAt || null}
                 onView={() => setPrdDrawerOpen(true)}
+                onVerify={() => navigate(`/kane?folder=${encodeURIComponent(projectName)}`)}
               />
             )
           })()
@@ -142,6 +142,7 @@ export default function DesignApp() {
             source={projectName}
             updatedAt={prdMeta?.createdAt || null}
             onView={() => setPrdDrawerOpen(true)}
+            onVerify={() => navigate(`/kane?folder=${encodeURIComponent(projectName)}`)}
           />
         ) : (
           <PrdEmptyState
@@ -163,15 +164,27 @@ export default function DesignApp() {
           </div>
         )}
 
+        {/* trigger 2 — verify banner when PRD ready */}
+        {prdExists && (
+          <div className="mt-4 bg-gradient-to-r from-[#7C5CFC]/10 to-[#9B7CFF]/10 border border-[#E5DEFA] rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#251F33]">Verify with Kane</p>
+              <p className="text-xs text-[#6E6480]">PRD is ready — run Kane to prove each claim in a real browser. Long-running, resumable.</p>
+            </div>
+            <button
+              onClick={() => navigate(`/kane?folder=${encodeURIComponent(projectName)}`)}
+              className="shrink-0 bg-[#7C5CFC] text-white text-xs font-bold rounded-full px-4 py-2 hover:opacity-90"
+            >
+              Open Kane →
+            </button>
+          </div>
+        )}
+
         <div className="mt-8">
           <StudioTabs tabs={tabs.map((t) => ({ ...t, count: tabCounts[t.id] ?? 0 }))} active={activeTab} onChange={setActiveTab} />
         </div>
 
-        {activeTab === 'kane' ? (
-          <div className="mt-6">
-            <KaneFlow folder={projectName} />
-          </div>
-        ) : activeTab === 'marketing' ? (
+        {activeTab === 'marketing' ? (
           <div className="mt-6 bg-white border border-[#EFEAFB] rounded-2xl p-8 text-center">
             <p className="text-sm font-semibold text-[#251F33]">Marketing resources — coming later</p>
             <p className="text-xs text-[#8A7FA6] mt-1">One-pagers and landing copy will build on the same verified PRD + run data.</p>
