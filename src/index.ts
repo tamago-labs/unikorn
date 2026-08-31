@@ -109,6 +109,9 @@ interface Inventory {
   extCount: Record<string, number>
   packageManager: string | null
   truncated: boolean
+  devPort: number | null
+  startUrl: string | null
+  hasAuth: boolean
 }
 
 function hashFolder(folder: string): string {
@@ -197,6 +200,9 @@ function scanInventory(folder: string): Inventory {
 
   let framework: string | null = null
   let packageManager: string | null = null
+  let devPort: number | null = null
+  let startUrl: string | null = null
+  let hasAuth = false
   try {
     const pkgPath = path.join(abs, 'package.json')
     if (fs.existsSync(pkgPath)) {
@@ -206,12 +212,37 @@ function scanInventory(folder: string): Inventory {
       else if (fs.existsSync(path.join(abs, 'yarn.lock'))) packageManager = 'yarn'
       else if (fs.existsSync(path.join(abs, 'package-lock.json'))) packageManager = 'npm'
       else packageManager = 'npm'
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }
+      hasAuth = Object.keys(deps).some((k) => /auth|passport|next-auth|clerk|supabase.*auth/i.test(k))
+      // try to parse vite.config for server.port
+      for (const cfg of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs']) {
+        const p = path.join(abs, cfg)
+        if (fs.existsSync(p)) {
+          try {
+            const txt = fs.readFileSync(p, 'utf-8')
+            const m = txt.match(/port\s*:\s*(\d{4,5})/)
+            if (m) devPort = parseInt(m[1], 10)
+          } catch {}
+          break
+        }
+      }
+      if (!devPort) {
+        if (framework && framework.includes('vite')) devPort = 5173
+        else if (framework === 'next') devPort = 3000
+        else if (framework === 'express') devPort = 3001
+      }
+      if (devPort) startUrl = `http://localhost:${devPort}`
     } else {
       framework = detectFramework(null, topLevelFiles, abs)
     }
   } catch {}
+  // fallback auth check via file names
+  if (!hasAuth) {
+    const authHint = allFiles.some((f) => /auth|login|signin/i.test(f))
+    if (authHint) hasAuth = true
+  }
 
-  const inv: Inventory = { folder: abs, fileCount, topLevelFiles, framework, hasReadme, readmeSnippet, routes, extCount, packageManager, truncated }
+  const inv: Inventory = { folder: abs, fileCount, topLevelFiles, framework, hasReadme, readmeSnippet, routes, extCount, packageManager, truncated, devPort, startUrl, hasAuth }
   // persist
   const dir = getProjectDir(abs)
   fs.writeFileSync(path.join(dir, 'inventory.json'), JSON.stringify({ ...inv, scannedAt: new Date().toISOString() }, null, 2))
@@ -460,43 +491,8 @@ function extractGenericToolCalls(text: string): { clean: string; calls: Array<{ 
   }
   for (const { raw, inner } of matches) {
     const lowerRaw = raw.toLowerCase()
-    const lowerInner = inner.toLowerCase()
-    // detect save_prd first
-    if (lowerRaw.includes('save_prd') || lowerInner.includes('save_prd') || inner.includes('markdown')) {
-      // try to extract markdown payload
-      let md = ''
-      const mdTag = inner.match(/<(?:markdown)\b[^>]*>([\s\S]*?)<\/(?:markdown)>/i)
-      if (mdTag) md = mdTag[1].trim()
-      else {
-        // try JSON {"markdown": "..."}
-        const jsonMd = inner.match(/"markdown"\s*:\s*"([\s\S]*?)"\s*(?:,|\})/)
-        if (jsonMd) {
-          try { md = JSON.parse(`"${jsonMd[1].replace(/"/g, '\\"')}"`) } catch { md = jsonMd[1] }
-          // attempt full JSON parse of args
-          try {
-            const obj = JSON.parse(inner.match(/\{[\s\S]*\}/)?.[0] || '{}')
-            if (obj.markdown) md = obj.markdown
-          } catch {}
-        } else {
-          // fallback: content after stripping tags
-          const stripped = inner.replace(/<[^>]+>/g, ' ').trim()
-          // if stripped looks like markdown header, use it
-          if (/^#\s/m.test(stripped)) md = stripped
-        }
-      }
-      if (md && md.length > 20) {
-        calls.push({ tool: 'save_prd', args: { markdown: md } })
-      } else {
-        // if inner itself is markdown-ish, capture
-        const maybeMd = inner.replace(/<[^>]+>/g, '').trim()
-        if (/^#\s/m.test(maybeMd) && maybeMd.length > 100) {
-          calls.push({ tool: 'save_prd', args: { markdown: maybeMd } })
-        }
-      }
-      clean = clean.split(raw).join('')
-      continue
-    }
-    // otherwise treat as file read/list
+    // only handle file read/list via generic fallback — save_prd must be via tool_calls, not text
+    // (remove save_prd extract hack for reliability)
     let rel = ''
     const pathTag = inner.match(/<(?:file_path|path|file)\b[^>]*>([^<]+)<\/(?:file_path|path|file)>/i)
     if (pathTag) rel = pathTag[1].trim()
@@ -528,7 +524,7 @@ function extractGenericToolCalls(text: string): { clean: string; calls: Array<{ 
     }
     clean = clean.split(raw).join('')
   }
-  // fragmented fallback — e.g. "tool_call</longcat_arg_key>..." without opening <
+  // fragmented fallback — only for file read/list, not save_prd (tool-only)
   const hasToolKeyword = /tool_call|longcat|_arg_key|_arg_value|read_file|list_dir|file_path|relative_workspace_path/i.test(clean)
   const hasMarkdown = /^#\s|^##\s/m.test(clean)
   if (hasToolKeyword && !hasMarkdown) {
@@ -538,15 +534,8 @@ function extractGenericToolCalls(text: string): { clean: string; calls: Array<{ 
     } else {
       const fragList = clean.match(/"relative_workspace_path"\s*:\s*"([^"]+)"/i)
       if (fragList) calls.push({ tool: 'list_files', args: { dir: fragList[1] } })
-      else {
-        const saveFrag = clean.match(/"markdown"\s*:\s*"([\s\S]*?)"/i)
-        if (saveFrag) {
-          let md = saveFrag[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
-          if (md.length > 20) calls.push({ tool: 'save_prd', args: { markdown: md } })
-        }
-      }
     }
-    // tool-only fragment → drop entirely
+    // tool-only fragment → drop entirely (no markdown)
     clean = ''
   }
   // strip any remaining orphan tool tags (incomplete streaming) and arg tags
@@ -596,11 +585,18 @@ Brief product overview (2-3 sentences), cite sources.
 ## 5. Tech Constraints
 - Express + WebSocket, OpenAI-compatible AI, Kane CLI, etc.
 
+## 6. Environment / How to Run (required for Kane CLI)
+- **Start URL:** http://localhost:PORT (from inventory startUrl, e.g. Vite 5173, Next 3000)
+- **Command:** npm run dev (or packageManager from inventory)
+- **Auth:** None if hasAuth=false, else describe login (e.g. no auth for calculator)
+- **Variables:** none or list {{baseUrl}} if needed
+
 Rules:
 - Use Given/When/Then for ACs.
 - Every claim ends with [src: relative/path or AI-generated, unverified]
 - Stable UC-N headings
 - No HTML, no placeholders.
+- Must include section 6 with Start URL and Auth so Kane can run kane-cli run with startUrl.
 `
 
 async function callAiStream(
@@ -653,7 +649,24 @@ async function callAiStream(
         if (!toolCallsRaw[idx]) toolCallsRaw[idx] = { id: tc.id || `call_${idx}`, type: 'function', function: { name: '', arguments: '' } }
         if (tc.id) toolCallsRaw[idx].id = tc.id
         if (tc.function?.name) toolCallsRaw[idx].function.name += tc.function.name
-        if (tc.function?.arguments) toolCallsRaw[idx].function.arguments += tc.function.arguments
+        if (tc.function?.arguments) {
+          toolCallsRaw[idx].function.arguments += tc.function.arguments
+          // stream save_prd markdown incrementally (tool-only, no extract hack)
+          const toolName = toolCallsRaw[idx].function.name || tc.function?.name || ''
+          if (toolName === 'save_prd') {
+            let chunkArg = tc.function.arguments
+            // strip JSON wrapper: remove leading {"markdown": " and trailing "} etc., unescape
+            // chunk is part of JSON string value, e.g. "# PRD\\n" or "## Overview"
+            // Heuristic: remove up to first " and after last "
+            let cleaned = chunkArg
+              .replace(/^.*?\"markdown\"\s*:\s*\"/, '')
+              .replace(/\"\s*\}?\s*$/, '')
+              .replace(/\\n/g, '\n')
+              .replace(/\\"/g, '"')
+            cleaned = stripGenericToolTags(cleaned)
+            if (cleaned) onDelta(cleaned)
+          }
+        }
       }
     }
   }
@@ -681,8 +694,8 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
   const ac = new AbortController()
   session.abort = ac
 
-  // Build inventory summary for prompt
-  const invSummary = `Folder: ${absFolder}\nFiles: ${inventory.fileCount} (truncated=${inventory.truncated})\nFramework: ${inventory.framework}\nTopLevel: ${inventory.topLevelFiles.join(', ')}\nRoutes: ${inventory.routes.slice(0, 10).join(', ')}\nReadme: ${inventory.readmeSnippet ? inventory.readmeSnippet.slice(0, 600) : 'none'}\nExts: ${JSON.stringify(inventory.extCount)}`
+  // Build inventory summary for prompt (include startUrl/auth for Kane)
+  const invSummary = `Folder: ${absFolder}\nFiles: ${inventory.fileCount} (truncated=${inventory.truncated})\nFramework: ${inventory.framework}\nTopLevel: ${inventory.topLevelFiles.join(', ')}\nRoutes: ${inventory.routes.slice(0, 10).join(', ')}\nReadme: ${inventory.readmeSnippet ? inventory.readmeSnippet.slice(0, 600) : 'none'}\nExts: ${JSON.stringify(inventory.extCount)}\nStartUrl: ${inventory.startUrl || 'unknown (ask user)'}\nDevPort: ${inventory.devPort || 'unknown'}\nPackageManager: ${inventory.packageManager || 'npm'}\nHasAuth: ${inventory.hasAuth}`
   const messages: any[] = [
     { role: 'system', content: SYSTEM_CLARIFY },
     { role: 'user', content: `Inventory:\n${invSummary}\n\nDecide if you need to read files or ask questions. Use tools if needed, otherwise output JSON.` },
@@ -798,7 +811,7 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
     send(ws, { type: 'prd:thinking', delta: '\n\nGenerating PRD…\n' })
     const genMessages: any[] = [
       { role: 'system', content: SYSTEM_GENERATE },
-      { role: 'user', content: `Inventory:\n${invSummary}\n${userAnswers ? `Answers: ${JSON.stringify(userAnswers)}\n` : ''}Generate the PRD now. Use read_file/list_files if you need to cite, then call save_prd(markdown) with the final markdown.` },
+      { role: 'user', content: `Inventory:\n${invSummary}\nStartUrl: ${inventory.startUrl || 'http://localhost:5173'} (run ${inventory.packageManager || 'npm'} run dev)\nHasAuth: ${inventory.hasAuth ? 'yes - describe auth' : 'no'}\n${userAnswers ? `Answers: ${JSON.stringify(userAnswers)}\n` : ''}Generate the PRD now. Use read_file/list_files if you need to cite, then call save_prd(markdown) with the final markdown. Must include section 6 Environment with Start URL and Auth.` },
     ]
     let fullMarkdown = ''
     let capturedViaTool: string | null = null
@@ -831,19 +844,9 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
           send(ws, { type: 'prd:thinking', delta: cleanThink })
         }
       )
-      // handle generic leaked save_prd first
-      const genericSave = pendingGenericThisRound.find((g) => g.tool === 'save_prd')
-      if (genericSave) {
-        const md = stripGenericToolTags(genericSave.args.markdown || '')
-        if (md.length > 50) {
-          capturedViaTool = md
-          send(ws, { type: 'prd:content', delta: md.slice(0, 4000) })
-          send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: { markdown: `${md.slice(0, 80)}… (${md.length} chars)` }, status: 'result', result: 'PRD captured via generic' })
-          break
-        }
-      }
-      // handle generic read/list leaked
-      if (pendingGenericThisRound.length && !genericSave) {
+      // handle generic leaked save_prd first (indicator only, no markdown preview)
+      // generic read/list only — save_prd must be via tool_calls
+      if (pendingGenericThisRound.length) {
         for (const g of pendingGenericThisRound) {
           if (g.tool === 'save_prd') continue
           send(ws, { type: 'prd:tool_call', tool: g.tool, args: g.args, status: 'running' })
@@ -871,9 +874,8 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
           const md = stripGenericToolTags(args.markdown || '')
           if (md && md.length > 30) {
             capturedViaTool = md
-            // also stream as content for preview (user sees drafting)
-            send(ws, { type: 'prd:content', delta: md.slice(0, 4000) })
-            send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: { markdown: `${md.slice(0, 80)}… (${md.length} chars)` }, status: 'result', result: 'PRD captured via tool' })
+            send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'running' })
+            send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'result', result: 'PRD saved' })
             genMessages.push({ role: 'assistant', content: genContent || fullMarkdown, tool_calls: genToolCalls })
             genMessages.push({ role: 'tool', tool_call_id: saveCall.id, content: 'PRD saved via tool' })
             break
@@ -942,13 +944,21 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
                 const a = JSON.parse(save.function.arguments || '{}')
                 if (a.markdown) {
                   capturedViaTool = stripGenericToolTags(a.markdown)
-                  if (capturedViaTool) send(ws, { type: 'prd:content', delta: capturedViaTool.slice(0, 4000) })
+                  if (capturedViaTool) {
+                    send(ws, { type: 'prd:content', delta: capturedViaTool.slice(0, 4000) })
+                    send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'running' })
+                    send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'result', result: 'PRD saved' })
+                  }
                 }
               } catch {
                 const m = (save.function.arguments || '').match(/"markdown"\s*:\s*"([\s\S]*?)"/)
                 if (m) {
                   capturedViaTool = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
-                  if (capturedViaTool) send(ws, { type: 'prd:content', delta: stripGenericToolTags(capturedViaTool).slice(0, 4000) })
+                  if (capturedViaTool) {
+                    send(ws, { type: 'prd:content', delta: stripGenericToolTags(capturedViaTool).slice(0, 4000) })
+                    send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'running' })
+                    send(ws, { type: 'prd:tool_call', tool: 'save_prd', args: {}, status: 'result', result: 'PRD saved' })
+                  }
                 }
               }
             }
@@ -964,9 +974,9 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
       } catch (e) { console.log('forced save_prd failed', (e as any).message) }
     }
 
-    // Prefer tool-captured markdown, fallback to streamed content
-    const finalMarkdown = stripGenericToolTags(capturedViaTool || fullMarkdown)
-    if (!finalMarkdown.trim()) throw new Error('AI returned empty PRD')
+    // Reliable: must be via save_prd tool, no extract fallback
+    const finalMarkdown = stripGenericToolTags(capturedViaTool || '')
+    if (!finalMarkdown.trim()) throw new Error('AI did not return PRD via save_prd tool — retry')
     const hasMarkdownHeader = /^#\s/m.test(finalMarkdown) || /##\s*1\.\s*Overview/i.test(finalMarkdown)
     if (!hasMarkdownHeader && finalMarkdown.length < 300) {
       throw new Error('AI did not return a valid PRD markdown — retry generation')
@@ -979,13 +989,13 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
     const meta = { folder: absFolder, createdAt: new Date().toISOString(), model: config.model, fileCount: inventory.fileCount, framework: inventory.framework }
     fs.writeFileSync(path.join(dir, 'prd.meta.json'), JSON.stringify(meta, null, 2))
     send(ws, { type: 'prd:done', markdown: finalMarkdown, savedTo: prdPath, meta })
-    console.log(`PRD saved to ${prdPath} (${finalMarkdown.length} chars) via ${capturedViaTool ? 'tool' : 'stream'}`)
+    console.log(`PRD saved to ${prdPath} (${finalMarkdown.length} chars) via tool`)
   } catch (err: any) {
     if (err.name === 'AbortError') {
       send(ws, { type: 'prd:aborted' })
     } else {
-      console.error('prd generation error', err)
-      send(ws, { type: 'prd:error', error: err.message || String(err) })
+      console.error('prd generation error', err.message, err.stack?.slice(0, 500))
+      send(ws, { type: 'prd:error', error: err.message || String(err) || 'Unknown error' })
     }
   } finally {
     session.abort = undefined

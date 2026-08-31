@@ -224,24 +224,42 @@ export default function AiDrawer({ open, folder, inventory, onClose, onDone }: P
             </div>
           )}
 
-          {toolCalls.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-[#8A7FA6] uppercase tracking-wide">Files checked</p>
-              {toolCalls.map((tc, i) => {
-                const label = friendlyToolLabel(tc)
-                const done = tc.status === 'result'
-                return (
-                  <div key={i} className="flex items-center gap-2 text-xs border border-[#EFEAFB] rounded-full px-3 py-1.5 bg-white">
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                      {done ? '✓' : '…'}
+          {(() => {
+            const saveCall = toolCalls.find((tc) => tc.tool === 'save_prd')
+            const fileCalls = toolCalls.filter((tc) => tc.tool !== 'save_prd')
+            return (
+              <>
+                {saveCall && (
+                  <div className={`flex items-center gap-3 text-sm border rounded-xl px-4 py-3 ${saveCall.status === 'result' ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${saveCall.status === 'result' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white animate-pulse'}`}>
+                      {saveCall.status === 'result' ? '✓' : '…'}
                     </span>
-                    <span className="font-medium text-[#251F33] truncate">{label}</span>
-                    <span className="text-[#8A7FA6] truncate font-mono text-[11px]">{tc.args?.path || tc.args?.dir || ''}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-bold ${saveCall.status === 'result' ? 'text-emerald-700' : 'text-amber-700'}`}>{saveCall.status === 'result' ? 'PRD saved' : 'Saving PRD…'}</p>
+                      <p className="text-xs text-[#6E6480] truncate">{saveCall.status === 'result' ? 'Ready to view' : 'Writing markdown via save_prd tool'}</p>
+                    </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+                )}
+                {fileCalls.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold text-[#8A7FA6] uppercase tracking-wide">Files checked</p>
+                    {fileCalls.map((tc, i) => {
+                      const done = tc.status === 'result'
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-xs border border-[#EFEAFB] rounded-full px-3 py-1.5 bg-white">
+                          <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${done ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white animate-pulse'}`}>
+                            {done ? '✓' : '…'}
+                          </span>
+                          <span className="font-medium text-[#251F33] truncate">{friendlyToolLabel(tc)}</span>
+                          <span className="text-[#8A7FA6] truncate font-mono text-[11px]">{tc.args?.path || tc.args?.dir || ''}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
           {content && (
             <div className="border border-[#E5DEFA] rounded-xl p-4 bg-white">

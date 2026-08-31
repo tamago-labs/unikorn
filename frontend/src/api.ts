@@ -75,6 +75,9 @@ export interface Inventory {
   extCount: Record<string, number>
   packageManager: string | null
   truncated: boolean
+  devPort: number | null
+  startUrl: string | null
+  hasAuth: boolean
 }
 
 export async function scanFolder(folder: string): Promise<{ ok: boolean; inventory: Inventory }> {

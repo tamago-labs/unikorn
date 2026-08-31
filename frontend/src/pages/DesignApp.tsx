@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import StudioHeader from '../components/StudioHeader'
-import VerifiedCard from '../components/VerifiedCard'
+import PrdSummaryCard, { parsePrdMarkdown } from '../components/PrdSummaryCard'
 import PrdEmptyState from '../components/PrdEmptyState'
 import AiDrawer from '../components/AiDrawer'
 import PrdDrawer from '../components/PrdDrawer'
@@ -9,7 +9,7 @@ import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
 import Gallery from '../components/Gallery'
-import { fetchWorkingFolder, scanFolder, fetchPrd, type Inventory } from '../api'
+import { fetchWorkingFolder, scanFolder, fetchPrd, fetchPrdContent, type Inventory } from '../api'
 import { useStatus } from '../contexts/StatusContext'
 import SettingsModal from '../components/SettingsModal'
 
@@ -44,6 +44,7 @@ export default function DesignApp() {
   const [prdExists, setPrdExists] = useState(false)
   const [prdMeta, setPrdMeta] = useState<any>(null)
   const [prdLoading, setPrdLoading] = useState(true)
+  const [prdContent, setPrdContent] = useState<string | null>(null)
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false)
   const [prdDrawerOpen, setPrdDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -71,7 +72,14 @@ export default function DesignApp() {
       .finally(() => { if (!cancelled) setInvLoading(false) })
 
     fetchPrd(projectName)
-      .then((r) => { if (!cancelled) { setPrdExists(r.exists); setPrdMeta(r.meta) } })
+      .then((r) => {
+        if (!cancelled) { setPrdExists(r.exists); setPrdMeta(r.meta) }
+        if (r.exists) {
+          fetchPrdContent(projectName).then((c) => { if (!cancelled) setPrdContent(c.content) }).catch(() => { if (!cancelled) setPrdContent(null) })
+        } else {
+          setPrdContent(null)
+        }
+      })
       .catch(() => { if (!cancelled) setPrdExists(false) })
       .finally(() => { if (!cancelled) setPrdLoading(false) })
     return () => { cancelled = true }
@@ -79,7 +87,11 @@ export default function DesignApp() {
 
   const refreshPrd = () => {
     if (!projectName) return
-    fetchPrd(projectName).then((r) => { setPrdExists(r.exists); setPrdMeta(r.meta) }).catch(() => {})
+    fetchPrd(projectName).then((r) => {
+      setPrdExists(r.exists); setPrdMeta(r.meta)
+      if (r.exists) fetchPrdContent(projectName).then((c) => setPrdContent(c.content)).catch(() => setPrdContent(null))
+      else setPrdContent(null)
+    }).catch(() => {})
   }
 
   const artifacts = mockArtifacts[activeTab] || []
@@ -94,12 +106,33 @@ export default function DesignApp() {
             <div className="h-4 w-48 bg-[#F1ECFE] rounded" />
             <div className="h-3 w-64 bg-[#FBFAFE] rounded mt-2" />
           </div>
+        ) : prdExists && prdContent ? (
+          (() => {
+            const parsed = parsePrdMarkdown(prdContent)
+            return (
+              <PrdSummaryCard
+                title={parsed.title}
+                overview={parsed.overview}
+                ucCount={parsed.ucCount}
+                acCount={parsed.acCount}
+                startUrl={parsed.startUrl || inventory?.startUrl || null}
+                hasAuth={parsed.hasAuth || !!inventory?.hasAuth}
+                source={inventory?.framework ? `${projectName} · ${inventory.framework}` : projectName}
+                updatedAt={prdMeta?.updatedAt || prdMeta?.createdAt || null}
+                onView={() => setPrdDrawerOpen(true)}
+              />
+            )
+          })()
         ) : prdExists ? (
-          <VerifiedCard
-            claimsProved={prdMeta?.claimsProved ?? 0}
-            totalClaims={prdMeta?.totalClaims ?? 0}
-            source={inventory?.framework ? `${projectName} · ${inventory.framework}` : projectName}
-            runId={prdMeta?.runId ?? (prdMeta?.createdAt ? new Date(prdMeta.createdAt).toLocaleDateString() : '—')}
+          <PrdSummaryCard
+            title="PRD ready"
+            overview="Loading preview…"
+            ucCount={0}
+            acCount={0}
+            startUrl={inventory?.startUrl || null}
+            hasAuth={!!inventory?.hasAuth}
+            source={projectName}
+            updatedAt={prdMeta?.createdAt || null}
             onView={() => setPrdDrawerOpen(true)}
           />
         ) : (
