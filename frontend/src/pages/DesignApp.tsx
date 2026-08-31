@@ -5,6 +5,7 @@ import PrdSummaryCard, { parsePrdMarkdown } from '../components/PrdSummaryCard'
 import PrdEmptyState from '../components/PrdEmptyState'
 import AiDrawer from '../components/AiDrawer'
 import PrdDrawer from '../components/PrdDrawer'
+import KaneFlow from '../components/KaneFlow'
 import StudioTabs from '../components/StudioTabs'
 import ArtifactCard from '../components/ArtifactCard'
 import NewArtifactCard from '../components/NewArtifactCard'
@@ -17,6 +18,7 @@ const tabs = [
   { id: 'tutorial', label: 'Tutorial', count: 4 },
   { id: 'slides', label: 'Slide deck', count: 2 },
   { id: 'marketing', label: 'Marketing', count: 6 },
+  { id: 'kane', label: 'Kane', count: 0 },
 ]
 
 const mockArtifacts: Record<string, Array<{ title: string; subtitle: string; badge: string; draft?: boolean }>> = {
@@ -159,12 +161,18 @@ export default function DesignApp() {
           <StudioTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
         </div>
 
-        <Gallery>
-          <NewArtifactCard label={`New ${activeTab}`} />
-          {artifacts.map((a) => (
-            <ArtifactCard key={a.title} title={a.title} subtitle={a.subtitle} badge={a.badge} draft={a.draft} />
-          ))}
-        </Gallery>
+        {activeTab === 'kane' ? (
+          <div className="mt-6">
+            <KaneFlow folder={projectName} />
+          </div>
+        ) : (
+          <Gallery>
+            <NewArtifactCard label={`New ${activeTab}`} />
+            {artifacts.map((a) => (
+              <ArtifactCard key={a.title} title={a.title} subtitle={a.subtitle} badge={a.badge} draft={a.draft} />
+            ))}
+          </Gallery>
+        )}
       </main>
 
       <AiDrawer open={aiDrawerOpen} folder={projectName} inventory={inventory} onClose={() => setAiDrawerOpen(false)} onDone={() => { refreshPrd(); }} />

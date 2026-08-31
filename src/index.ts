@@ -6,7 +6,7 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { createServer } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
-import { execSync } from 'child_process'
+import { execSync, spawn, type ChildProcess } from 'child_process'
 import OpenAI from 'openai'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -94,7 +94,7 @@ function getKaneStatus(): KaneStatus {
 }
 
 // --- Scan / PRD helpers ---
-const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.turbo', 'coverage', '.testmuai', '.unikorn', '__pycache__', '.venv', 'vendor', '.cache', 'out', '.parcel-cache'])
+const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.turbo', 'coverage', '.testmuai', '.context', '.unikorn', '__pycache__', '.venv', 'vendor', '.cache', 'out', '.parcel-cache'])
 const MAX_FILES = 20000
 const MAX_DEPTH = 7
 
@@ -274,7 +274,7 @@ function getPrdMeta(folder: string) {
 
 // ============== REST API ==============
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', app: 'unikorn', port: PORT }))
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', app: 'unikorn', port: PORT, kaneJobs: true }))
 
 app.get('/api/working-folder', (_req, res) => {
   res.json({ folder: process.cwd() })
@@ -389,7 +389,542 @@ app.get('/api/prd/content', (req, res) => {
   }
 })
 
-// Kane status
+// --- Kane runner: async spawn (never blocks the Express event loop) ---
+function kaneQuote(a: string): string {
+  return /[\s"^&|<>()!]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a
+}
+
+function killTree(child: ChildProcess) {
+  if (!child.pid) return
+  if (process.platform === 'win32') {
+    // child.kill() only kills the cmd.exe wrapper on Windows — kill the whole tree
+    try { execSync(`taskkill /PID ${child.pid} /T /F`, { stdio: 'ignore' }) } catch {}
+  } else {
+    try { child.kill('SIGTERM') } catch {}
+  }
+}
+
+interface KaneRunResult { code: number; stdout: string; timedOut: boolean }
+
+function runKaneAsync(args: string[], cwd: string, timeout = 120000): Promise<KaneRunResult> {
+  return new Promise((resolve) => {
+    const cmdline = ['kane-cli', ...args].map(kaneQuote).join(' ')
+    const child = spawn(cmdline, {
+      shell: true,
+      cwd,
+      env: { ...process.env, KANE_CLI_USER_AGENT: 'unikorn' },
+      windowsHide: true,
+    })
+    let out = ''
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; killTree(child) }, timeout)
+    child.stdout?.on('data', (d: Buffer) => { out += d.toString() })
+    child.stderr?.on('data', (d: Buffer) => { out += d.toString() })
+    child.on('error', (e: Error) => {
+      clearTimeout(timer)
+      resolve({ code: 1, stdout: out + (out ? '\n' : '') + (e.message || String(e)), timedOut })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      let finalCode = code ?? 1
+      // Windows libuv assertion can crash the shell even when kane succeeded (exit_code 0 in stdout)
+      const isWindowsCrash = finalCode === -1073740791 || finalCode === 3221226505
+      const hasSuccessInOut = /"exit_code"\s*:\s*0|"status"\s*:\s*"(created|unchanged|complete|trusted|passed)"/.test(out)
+      if (isWindowsCrash && hasSuccessInOut) finalCode = 0
+      if (timedOut) finalCode = 3
+      resolve({ code: finalCode, stdout: out, timedOut })
+    })
+  })
+}
+
+// --- Tolerant parsing (kane output may mix prose lines with NDJSON) ---
+function parseJsonLines(out: string): any[] {
+  const rows: any[] = []
+  for (const line of out.split('\n')) {
+    const t = line.trim()
+    if (!t.startsWith('{')) continue
+    try { rows.push(JSON.parse(t)) } catch {}
+  }
+  return rows
+}
+
+function parseMaybeJson(out: string): any | null {
+  const t = out.trim()
+  if (!t) return null
+  try { return JSON.parse(t) } catch {}
+  const lines = t.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{'))
+  for (let i = lines.length - 1; i >= 0; i--) {
+    try { return JSON.parse(lines[i]) } catch {}
+  }
+  const start = t.indexOf('{')
+  if (start >= 0) {
+    try { return JSON.parse(t.slice(start)) } catch {}
+  }
+  return null
+}
+
+// --- Kane job runner: NDJSON streaming + pause/resume ---
+// On assurance commands (context ingest/design tests) exit 3 = PAUSED (resumable session),
+// NOT a failure. The pause questions + verbatim resume command arrive on the stream.
+interface KaneJob {
+  id: string
+  type: 'ingest' | 'design' | 'testmd'
+  folder: string
+  status: 'running' | 'paused' | 'done' | 'error'
+  code: number | null
+  events: any[]
+  rawTail: string[]
+  sid: string | null
+  resumeCmd: string | null
+  questions: any[]
+  error: string | null
+  runEnd: any | null
+  done?: any
+  child?: ChildProcess
+  opts?: { onClose?: (job: KaneJob, r: KaneRunResult) => void; timeout?: number }
+  createdAt: string
+  updatedAt: string
+}
+
+const kaneJobs = new Map<string, KaneJob>()
+const JOB_TAIL = 100
+
+function jobPublic(j: KaneJob) {
+  return {
+    id: j.id, type: j.type, folder: j.folder, status: j.status, code: j.code,
+    events: j.events.slice(-40), rawTail: j.rawTail.slice(-20),
+    sid: j.sid, questions: j.questions, error: j.error, runEnd: j.runEnd, done: j.done ?? null, updatedAt: j.updatedAt,
+  }
+}
+
+function handleJobLine(j: KaneJob, line: string) {
+  const t = line.trim()
+  if (!t) return
+  j.rawTail.push(t)
+  if (j.rawTail.length > JOB_TAIL) j.rawTail.shift()
+  if (!t.startsWith('{')) return
+  let obj: any
+  try { obj = JSON.parse(t) } catch { return }
+  j.events.push(obj)
+  if (j.events.length > JOB_TAIL) j.events.splice(0, j.events.length - JOB_TAIL)
+  j.updatedAt = new Date().toISOString()
+  if (obj.type === 'session_paused') {
+    j.sid = obj.sid || obj.session_id || obj.sessionId || null
+    j.resumeCmd = obj.resume || obj.resume_command || obj.resumeCommand || null
+    const qs = obj.pending_questions || obj.questions
+    j.questions = Array.isArray(qs) ? qs : []
+  } else if (obj.type === 'run_end') {
+    j.runEnd = obj
+  } else if (obj.type === 'done') {
+    j.done = obj
+  } else if (obj.type === 'error') {
+    j.error = obj.message || obj.error || obj.code || 'kane error'
+  }
+}
+
+function launchKaneJob(j: KaneJob, cmdline: string) {
+  j.status = 'running'
+  j.code = null
+  j.error = null
+  j.questions = []
+  j.sid = null
+  j.resumeCmd = null
+  j.runEnd = null
+  j.updatedAt = new Date().toISOString()
+  const child = spawn(cmdline, {
+    shell: true,
+    cwd: path.resolve(j.folder),
+    env: { ...process.env, KANE_CLI_USER_AGENT: 'unikorn' },
+    windowsHide: true,
+  })
+  j.child = child
+  let buf = ''
+  child.stdout?.on('data', (d: Buffer) => {
+    buf += d.toString()
+    let idx: number
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx)
+      buf = buf.slice(idx + 1)
+      handleJobLine(j, line)
+    }
+  })
+  child.stderr?.on('data', (d: Buffer) => {
+    const t = d.toString().trim()
+    if (!t) return
+    j.rawTail.push('[stderr] ' + t)
+    if (j.rawTail.length > JOB_TAIL) j.rawTail.shift()
+  })
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; killTree(child) }, j.opts?.timeout ?? 600000)
+  // Watchdog: headless testmd runs can stall on ask_user (no one to answer)
+  let watchdog: ReturnType<typeof setInterval> | null = null
+  if (j.type === 'testmd') {
+    watchdog = setInterval(() => {
+      if (j.status !== 'running' || !j.child) return
+      const idleMs = Date.now() - Date.parse(j.updatedAt)
+      const lastEv = j.events[j.events.length - 1]
+      const askStuck = lastEv?.type === 'ask_user' && idleMs > 60000
+      const idleStuck = idleMs > 240000
+      if (askStuck || idleStuck) {
+        ;(j as any).watchdogReason = askStuck
+          ? 'Stuck on an ask_user prompt — auto-skipped (nothing can answer in a headless run)'
+          : 'No activity for 4 minutes — auto-skipped'
+        killTree(child)
+      }
+    }, 10000)
+  }
+  child.on('error', (e: Error) => {
+    clearTimeout(timer)
+    j.child = undefined
+    j.status = 'error'
+    j.code = 1
+    j.error = e.message || String(e)
+    j.updatedAt = new Date().toISOString()
+  })
+  child.on('close', (code) => {
+    clearTimeout(timer)
+    if (watchdog) clearInterval(watchdog)
+    j.child = undefined
+    if (buf.trim()) handleJobLine(j, buf)
+    let finalCode = code ?? 1
+    const isWindowsCrash = finalCode === -1073740791 || finalCode === 3221226505
+    const hasSuccessInOut = /"exit_code"\s*:\s*0|"status"\s*:\s*"(created|unchanged|complete|trusted|passed)"/.test(j.rawTail.join('\n'))
+    if (isWindowsCrash && hasSuccessInOut) finalCode = 0
+    if (timedOut) finalCode = 3
+    j.code = finalCode
+    j.updatedAt = new Date().toISOString()
+    const isAssurance = j.type === 'ingest' || j.type === 'design'
+    const doneStatus = j.done?.status
+    if (finalCode === 0 || doneStatus === 'complete') {
+      j.status = 'done'
+    } else if ((doneStatus === 'paused' || finalCode === 3) && isAssurance && (j.sid || j.questions.length)) {
+      j.status = 'paused'
+    } else {
+      j.status = 'error'
+      if (!j.error) j.error = (j as any).watchdogReason || (finalCode === 3 ? 'Timed out or cancelled' : `kane-cli exited with code ${finalCode}`)
+    }
+    j.opts?.onClose?.(j, { code: finalCode, stdout: j.rawTail.join('\n'), timedOut })
+  })
+}
+
+function newJob(type: KaneJob['type'], folder: string, opts?: KaneJob['opts']): KaneJob {
+  const job: KaneJob = {
+    id: crypto.randomBytes(8).toString('hex'),
+    type, folder, status: 'running', code: null, events: [], rawTail: [],
+    sid: null, resumeCmd: null, questions: [], error: null, runEnd: null,
+    opts, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  }
+  kaneJobs.set(job.id, job)
+  for (const [id, j] of kaneJobs) {
+    if (kaneJobs.size <= 40) break
+    if (!j.child && j.status !== 'running') kaneJobs.delete(id)
+  }
+  return job
+}
+
+function startKaneJob(type: KaneJob['type'], folder: string, args: string[], opts?: KaneJob['opts']): KaneJob {
+  const job = newJob(type, folder, opts)
+  launchKaneJob(job, ['kane-cli', ...args].map(kaneQuote).join(' '))
+  return job
+}
+
+function resumeKaneJob(j: KaneJob, message: string) {
+  if (!j.resumeCmd && !j.sid) {
+    j.status = 'error'
+    j.error = 'No resumable session for this job'
+    return
+  }
+  const base = j.resumeCmd || (j.type === 'design'
+    ? `kane-cli design tests --resume ${j.sid} --mode agent`
+    : `kane-cli context extract --resume ${j.sid} --mode agent`)
+  j.resumeCmd = null
+  // Sessions can pause with NO pending questions (durable checkpoint) — resume verbatim, no --message
+  launchKaneJob(j, message ? `${base} --message ${kaneQuote(message)}` : base)
+}
+
+// Persist testmd run results (run_end) — the "collected info" used later for slides/tutorial
+function recordRun(folder: string, testFile: string, j: KaneJob) {
+  try {
+    const re: any = j.runEnd
+    const runsPath = path.join(getProjectDir(folder), 'runs.json')
+    let runs: any[] = []
+    if (fs.existsSync(runsPath)) {
+      try { runs = JSON.parse(fs.readFileSync(runsPath, 'utf-8')) } catch {}
+    }
+    // Evidence pack: testmd runs seal one into <folder>/.testmuai/evidence/ — newest is this run's
+    let evidencePack: string | null = null
+    try {
+      const evDir = path.join(folder, '.testmuai', 'evidence')
+      if (fs.existsSync(evDir)) {
+        const packs = fs.readdirSync(evDir)
+          .filter((f) => f.endsWith('.evidence'))
+          .map((f) => ({ f, t: fs.statSync(path.join(evDir, f)).mtimeMs }))
+          .sort((a, b) => b.t - a.t)
+        if (packs[0]) evidencePack = path.join(evDir, packs[0].f)
+      }
+    } catch {}
+    runs.push({
+      file: path.relative(path.resolve(folder), testFile).replace(/\\/g, '/'),
+      finishedAt: new Date().toISOString(),
+      status: re?.status || (j.status === 'done' ? 'passed' : 'failed'),
+      oneLiner: re?.one_liner ?? null,
+      summary: re?.summary ?? null,
+      duration: re?.duration ?? null,
+      testUrl: re?.test_url ?? null,
+      finalState: re?.final_state ?? null,
+      evidencePack,
+      error: j.error,
+    })
+    if (runs.length > 100) runs = runs.slice(-100)
+    fs.writeFileSync(runsPath, JSON.stringify(runs, null, 2))
+  } catch (e: any) {
+    console.error('recordRun failed', e.message)
+  }
+}
+
+app.get('/api/kane/assurance', async (req, res) => {
+  const folder = path.resolve((req.query.folder as string) || process.cwd())
+  try {
+    const [all, inferred, coverR, sess] = await Promise.all([
+      runKaneAsync(['context', 'list', '--json', '--type', 'usecase'], folder, 30000),
+      runKaneAsync(['context', 'list', '--json', '--inferred', '--type', 'usecase'], folder, 30000),
+      runKaneAsync(['cover', 'gaps', '--json'], folder, 60000),
+      runKaneAsync(['context', 'sessions', '--json'], folder, 30000),
+    ])
+    const inferredIds = new Set(parseJsonLines(inferred.stdout)
+      .map((r: any) => r.id || r.cid || r.ref || r.slug || r.name)
+      .filter((v: any) => typeof v === 'string' && v))
+    const ucs = parseJsonLines(all.stdout).map((r: any) => {
+      const id = r.id || r.cid || r.ref || r.slug || r.name || ''
+      return { ...r, _id: id, _title: r.title || r.name || id || 'use-case', _trusted: r.trust === 'trusted' || (!inferredIds.has(id) && r.trust !== 'derived') }
+    })
+    const cover = parseMaybeJson(coverR.stdout)
+    const sessions = parseMaybeJson(sess.stdout)
+    let tests: string[] = []
+    try {
+      const testDir = path.join(folder, '.testmuai', 'tests')
+      if (fs.existsSync(testDir)) {
+        const walk = (d: string) => {
+          for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+            const p = path.join(d, e.name)
+            if (e.isDirectory()) walk(p)
+            else if (e.name.endsWith('_test.md')) tests.push(path.relative(folder, p).replace(/\\/g, '/'))
+          }
+        }
+        walk(testDir)
+        tests.sort()
+      }
+    } catch {}
+    res.json({ folder, ucs, cover, sessions, tests })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/kane/ingest', (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const prdSrc = getPrdMeta(folder).prdPath
+  if (!fs.existsSync(prdSrc)) return res.status(404).json({ error: 'PRD not found — generate it first' })
+  // Ingest the PRD straight from the Unikorn store — nothing is written into the user's repo
+  const job = startKaneJob('ingest', folder, ['context', 'ingest', prdSrc, '--mode', 'agent'], { timeout: 600000 })
+  res.json({ ok: true, jobId: job.id })
+})
+
+app.post('/api/kane/review', async (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  try {
+    let args: string[]
+    if (Array.isArray(req.body.verdicts) && req.body.verdicts.length) {
+      const tmp = path.join(getProjectDir(folder), `verdicts-${Date.now()}.json`)
+      fs.writeFileSync(tmp, JSON.stringify(req.body.verdicts))
+      args = ['context', 'review', '--verdicts', tmp, '--json']
+    } else {
+      // Explicit "Approve" click from the UI — approve the derived (unreviewed) use-cases
+      const list = await runKaneAsync(['context', 'list', '--json', '--inferred', '--type', 'usecase'], folder, 30000)
+      const ids = parseJsonLines(list.stdout)
+        .map((r: any) => r.id || r.cid || r.ref || r.slug || r.name)
+        .filter((v: any) => typeof v === 'string' && v)
+      if (!ids.length) return res.json({ ok: true, message: 'nothing to approve' })
+      args = ['context', 'review', '--approve', ...ids, '--json']
+    }
+    const r = await runKaneAsync(args, folder, 120000)
+    res.json({ ok: r.code === 0, stdout: r.stdout.slice(-4000), code: r.code })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/kane/design', (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const uc = String(req.body.uc || 'uc-1')
+  const max = Number(req.body.max) || 8
+  const job = startKaneJob('design', folder, ['design', 'tests', '--use-case', uc, '--mode', 'agent', '--max', String(max)], { timeout: 600000 })
+  res.json({ ok: true, jobId: job.id })
+})
+
+app.post('/api/kane/testmd/run', (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const file = String(req.body.file || '')
+  if (!file) return res.status(400).json({ error: 'Missing test file' })
+  const absFile = path.isAbsolute(file) ? file : path.join(folder, file)
+  if (!fs.existsSync(absFile)) return res.status(404).json({ error: `Test file not found: ${file}` })
+  // Variables via --variables-file (never inline JSON on the command line)
+  const inv = (() => { try { return scanInventory(folder) } catch { return null } })()
+  const startUrl = inv?.startUrl || `http://localhost:${inv?.devPort || 5173}`
+  const varsFile = path.join(getProjectDir(folder), `vars-${Date.now()}.json`)
+  fs.writeFileSync(varsFile, JSON.stringify({ start_url: { value: startUrl } }))
+  const args = ['testmd', 'run', absFile, '--agent', '--variables-file', varsFile]
+  if (req.body.headless !== false) args.push('--headless')
+  const job = startKaneJob('testmd', folder, args, { timeout: 900000, onClose: (j) => recordRun(folder, absFile, j) })
+  res.json({ ok: true, jobId: job.id, startUrl })
+})
+
+app.get('/api/kane/job/:id', (req, res) => {
+  const j = kaneJobs.get(req.params.id)
+  if (!j) return res.status(404).json({ error: 'Job not found' })
+  res.json(jobPublic(j))
+})
+
+app.post('/api/kane/job/:id/answer', (req, res) => {
+  const j = kaneJobs.get(req.params.id)
+  if (!j) return res.status(404).json({ error: 'Job not found' })
+  if (j.status !== 'paused') return res.status(400).json({ error: `Job is ${j.status}, not paused` })
+  // Empty message = resume with no answer (checkpoint pauses carry no questions)
+  const message = String(req.body.message || '').trim()
+  if (!message && j.questions.length > 0) return res.status(400).json({ error: 'Missing answer' })
+  resumeKaneJob(j, message)
+  res.json(jobPublic(j))
+})
+
+// Resume a durable kane session by id — works even after a backend restart (sessions live 24h)
+app.post('/api/kane/resume', (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const sid = String(req.body.sid || '')
+  const verb = String(req.body.verb || 'design')
+  if (!sid) return res.status(400).json({ error: 'Missing session id' })
+  const args = verb === 'extract'
+    ? ['context', 'extract', '--resume', sid, '--mode', 'agent']
+    : ['design', 'tests', '--resume', sid, '--mode', 'agent']
+  const job = startKaneJob(verb === 'extract' ? 'ingest' : 'design', folder, args, { timeout: 600000 })
+  res.json({ ok: true, jobId: job.id })
+})
+
+app.post('/api/kane/job/:id/cancel', (req, res) => {
+  const j = kaneJobs.get(req.params.id)
+  if (!j) return res.status(404).json({ error: 'Job not found' })
+  if (j.child) killTree(j.child)
+  res.json({ ok: true })
+})
+
+app.get('/api/kane/runs', (req, res) => {
+  const folder = path.resolve((req.query.folder as string) || process.cwd())
+  const runsPath = path.join(getProjectDir(folder), 'runs.json')
+  let runs: any[] = []
+  try { if (fs.existsSync(runsPath)) runs = JSON.parse(fs.readFileSync(runsPath, 'utf-8')) } catch {}
+  res.json({ runs: runs.slice().reverse(), folder })
+})
+
+// Serve an evidence pack's local viewer — returns the hosted viewer URL (local-only, nothing uploads)
+const evidenceServers = new Map<string, ChildProcess>()
+
+app.post('/api/kane/evidence/serve', (req, res) => {
+  const pack = String(req.body.pack || '')
+  if (!pack || !fs.existsSync(pack)) return res.status(404).json({ error: 'Evidence pack not found' })
+  const prev = evidenceServers.get(pack)
+  if (prev) { killTree(prev); evidenceServers.delete(pack) }
+  const child = spawn(['kane-cli', 'evidence', 'serve', kaneQuote(pack)].join(' '), {
+    shell: true,
+    windowsHide: true,
+    env: { ...process.env, KANE_CLI_USER_AGENT: 'unikorn' },
+  })
+  evidenceServers.set(pack, child)
+  let out = ''
+  let answered = false
+  const finish = (fn: () => void) => { if (!answered) { answered = true; fn() } }
+  const timer = setTimeout(() => finish(() => res.status(504).json({ error: 'evidence serve timed out' })), 25000)
+  child.stdout?.on('data', (d: Buffer) => {
+    out += d.toString()
+    const m = out.match(/viewer\s+(https?:\/\/\S+)/)
+    if (m) {
+      clearTimeout(timer)
+      finish(() => res.json({ ok: true, viewer: m[1] }))
+    }
+  })
+  child.stderr?.on('data', (d: Buffer) => { out += d.toString() })
+  child.on('close', () => { clearTimeout(timer); finish(() => res.status(500).json({ error: 'evidence serve exited before serving' })) })
+  child.on('error', (e: Error) => { clearTimeout(timer); finish(() => res.status(500).json({ error: e.message })) })
+})
+
+app.post('/api/kane/cover', async (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const r = await runKaneAsync(['cover', 'gaps', '--json'], folder, 120000)
+  res.json({ ok: r.code === 0, stdout: r.stdout.slice(-4000), code: r.code, cover: parseMaybeJson(r.stdout) })
+})
+
+// Dev server prepare for kane tests
+const devServers = new Map<string, ChildProcess>()
+
+app.post('/api/kane/prepare', async (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const inv = (() => { try { return scanInventory(folder) } catch { return null } })()
+  const port = inv?.devPort || 5173
+  const url = `http://localhost:${port}`
+  // Already reachable? Don't spawn a second server on the same port.
+  try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 2500)
+    const probe = await fetch(url, { signal: controller.signal })
+    clearTimeout(t)
+    if (probe.ok) return res.json({ ok: true, message: 'already running', port, startUrl: url })
+  } catch {}
+  const key = folder
+  const existing = devServers.get(key)
+  if (existing && !existing.killed) return res.json({ ok: true, message: 'already running', port, startUrl: url })
+  try {
+    const child = spawn('npm', ['run', 'dev', '--', '--port', String(port), '--host', '127.0.0.1'], {
+      cwd: folder,
+      shell: true,
+      detached: false,
+      stdio: 'ignore',
+    })
+    child.on('error', (e) => console.error('dev server error', e.message))
+    child.unref()
+    devServers.set(key, child)
+    console.log(`Dev server spawned for ${folder} on port ${port} pid ${child.pid}`)
+    res.json({ ok: true, port, startUrl: url, pid: child.pid })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/kane/prepare/status', async (req, res) => {
+  const folder = path.resolve((req.query.folder as string) || process.cwd())
+  const inv = (() => { try { return scanInventory(folder) } catch { return null } })()
+  const port = inv?.devPort || 5173
+  const url = `http://localhost:${port}`
+  try {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 3000)
+    const r = await fetch(url, { signal: controller.signal })
+    clearTimeout(t)
+    res.json({ ok: r.ok, status: r.status, port, startUrl: url, running: r.ok })
+  } catch (err: any) {
+    res.json({ ok: false, running: false, port, startUrl: url, error: err.message })
+  }
+})
+
+app.post('/api/kane/prepare/stop', (req, res) => {
+  const folder = path.resolve(req.body.folder || process.cwd())
+  const child = devServers.get(folder)
+  if (child && child.pid) {
+    killTree(child)
+    devServers.delete(folder)
+    return res.json({ ok: true, stopped: true })
+  }
+  res.json({ ok: true, stopped: false, message: 'not running' })
+})
+
+// Kane status (global)
 app.get('/api/kane/status', (_req, res) => {
   res.json(getKaneStatus())
 })
@@ -450,10 +985,15 @@ const SAVE_PRD_TOOL: any = {
   },
 }
 
+function isInsideFolder(root: string, target: string): boolean {
+  const rel = path.relative(path.resolve(root), path.resolve(target))
+  return !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
 function safeReadFile(folder: string, rel: string): string {
   const abs = path.resolve(path.join(folder, rel))
   const root = path.resolve(folder)
-  if (!abs.startsWith(root)) throw new Error('Path outside project folder')
+  if (!isInsideFolder(root, abs)) throw new Error('Path outside project folder')
   const stat = fs.statSync(abs)
   if (stat.isDirectory()) throw new Error('Path is a directory, not a file')
   if (stat.size > 200_000) {
@@ -466,7 +1006,7 @@ function safeReadFile(folder: string, rel: string): string {
 function safeListFiles(folder: string, relDir: string, limit = 50): string[] {
   const abs = path.resolve(path.join(folder, relDir || '.'))
   const root = path.resolve(folder)
-  if (!abs.startsWith(root)) throw new Error('Dir outside project folder')
+  if (!isInsideFolder(root, abs)) throw new Error('Dir outside project folder')
   const entries = fs.readdirSync(abs, { withFileTypes: true })
   const out: string[] = []
   for (const e of entries) {
@@ -974,9 +1514,12 @@ async function handlePrdGeneration(ws: WebSocket, folder: string, session: WsSes
       } catch (e) { console.log('forced save_prd failed', (e as any).message) }
     }
 
-    // Reliable: must be via save_prd tool, no extract fallback
-    const finalMarkdown = stripGenericToolTags(capturedViaTool || '')
-    if (!finalMarkdown.trim()) throw new Error('AI did not return PRD via save_prd tool — retry')
+    // Prefer save_prd capture; fall back to streamed content (providers that never emit tool calls)
+    let finalMarkdown = stripGenericToolTags(capturedViaTool || '')
+    if (!finalMarkdown.trim() && fullMarkdown.trim().length > 100) {
+      finalMarkdown = stripGenericToolTags(fullMarkdown)
+    }
+    if (!finalMarkdown.trim()) throw new Error('AI did not return a PRD — retry generation')
     const hasMarkdownHeader = /^#\s/m.test(finalMarkdown) || /##\s*1\.\s*Overview/i.test(finalMarkdown)
     if (!hasMarkdownHeader && finalMarkdown.length < 300) {
       throw new Error('AI did not return a valid PRD markdown — retry generation')

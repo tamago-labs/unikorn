@@ -129,3 +129,97 @@ export async function clearLogs(): Promise<{ ok: boolean }> {
   const res = await fetch(`${API_BASE}/logs/clear`, { method: 'POST' })
   return res.json()
 }
+
+// --- Kane job runner (async, streamed, pausable) ---
+
+export interface KaneJobState {
+  id: string
+  type: 'ingest' | 'design' | 'testmd'
+  folder: string
+  status: 'running' | 'paused' | 'done' | 'error'
+  code: number | null
+  events: any[]
+  rawTail: string[]
+  sid: string | null
+  questions: any[]
+  error: string | null
+  runEnd: any | null
+  updatedAt: string
+}
+
+export interface KaneRunRecord {
+  file: string
+  finishedAt: string
+  status: string
+  oneLiner: string | null
+  summary: string | null
+  duration: number | string | null
+  testUrl: string | null
+  finalState: Record<string, any> | null
+  evidencePack: string | null
+  error: string | null
+}
+
+async function postJson(url: string, body: any): Promise<any> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error((j as any).error || `${res.status}`)
+  return j
+}
+
+export const startKaneIngest = (folder: string) =>
+  postJson(`${API_BASE}/kane/ingest`, { folder }) as Promise<{ jobId: string }>
+
+export const startKaneDesign = (folder: string, uc: string, max = 8) =>
+  postJson(`${API_BASE}/kane/design`, { folder, uc, max }) as Promise<{ jobId: string }>
+
+export const startKaneResume = (folder: string, sid: string, verb = 'design') =>
+  postJson(`${API_BASE}/kane/resume`, { folder, sid, verb }) as Promise<{ jobId: string }>
+
+export const startTestmdRun = (folder: string, file: string, headless = true) =>
+  postJson(`${API_BASE}/kane/testmd/run`, { folder, file, headless }) as Promise<{ jobId: string; startUrl?: string }>
+
+export const kaneReview = (folder: string, payload: { approveAll?: boolean; verdicts?: Array<{ ref: string; resolution: string }> } = {}) =>
+  postJson(`${API_BASE}/kane/review`, { folder, ...payload }) as Promise<{ ok: boolean; message?: string; stdout?: string; code?: number }>
+
+export const answerKaneJob = (id: string, message: string) =>
+  postJson(`${API_BASE}/kane/job/${id}/answer`, { message }) as Promise<KaneJobState>
+
+export const cancelKaneJob = (id: string) =>
+  postJson(`${API_BASE}/kane/job/${id}/cancel`, {}) as Promise<{ ok: boolean }>
+
+export const serveEvidence = (pack: string) =>
+  postJson(`${API_BASE}/kane/evidence/serve`, { pack }) as Promise<{ ok: boolean; viewer: string }>
+
+export async function fetchKaneJob(id: string): Promise<KaneJobState> {
+  return jsonFetch(`${API_BASE}/kane/job/${id}`)
+}
+
+export async function fetchRuns(folder: string): Promise<{ runs: KaneRunRecord[] }> {
+  return jsonFetch(`${API_BASE}/kane/runs?folder=${encodeURIComponent(folder)}`)
+}
+
+export async function fetchHealth(): Promise<{ status: string; kaneJobs?: boolean }> {
+  const res = await fetch(`${API_BASE}/health`)
+  return res.json()
+}
+
+// Fetch that fails loudly when the backend answers HTML (stale CLI server / missing route)
+export async function jsonFetch(input: string, init?: RequestInit): Promise<any> {
+  const res = await fetch(input, init)
+  const text = await res.text()
+  let data: any = null
+  try { data = JSON.parse(text) } catch {}
+  if (data === null) {
+    if (text.trimStart().startsWith('<')) {
+      throw new Error('CLI server is outdated — restart it (npm run dev) and refresh this page')
+    }
+    throw new Error(`Unexpected response from ${input}: ${text.slice(0, 120)}`)
+  }
+  if (!res.ok) throw new Error(data?.error || `${res.status}`)
+  return data
+}
