@@ -27,6 +27,10 @@ folder → scan → PRD (AI, cited) → ingest → review → design tests
       → tutorial / slide deck (HTML, one page each, screenshots inlined)
 ```
 
+## Quick Links
+
+- [YouTube Demo (3 mins)](https://youtu.be/bKDawXG7g40)
+
 ## Highlights
 
 - **Codebase inventory** — Framework detection, routes, ports, auth hints, package manager; served to the AI as grounding context.
